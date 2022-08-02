@@ -31,7 +31,7 @@ await registerComponents([ 'welcome-message.relax' ])
 console.log(await (<welcome-message name="Ayo Reis"></welcome-message>))
 ```
 
-```json
+```jsonc
 // deno.json
 {
     "compilerOptions": {
