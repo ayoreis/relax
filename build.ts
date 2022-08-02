@@ -28,7 +28,7 @@ export function build(source: string) {
     const ast = fromJs(`
     export default {
         tagName: '${ tagName.toLowerCase() }',
-        async function(${ parameters }) {},
+        async function({${ parameters }}) {},
     }
     `, fromOptions)
 
