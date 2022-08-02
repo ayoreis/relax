@@ -3,3 +3,8 @@ export { fromJs, } from 'https://esm.sh/esast-util-from-js@1.0.0?pin=v87&bundle&
 export { default as jsxPlugin, } from 'https://esm.sh/acorn-jsx@5.3.2?pin=v87&bundle&dev'
 export { default as stage3Plugin, } from 'https://esm.sh/acorn-stage3@4.0.0?pin=v87&bundle&dev'
 export { toJs, jsx as jsxHandler,} from 'https://esm.sh/estree-util-to-js@1.0.0?pin=v87&bundle&dev'
+import * as esbuildWasm from 'https://deno.land/x/esbuild@v0.14.51/wasm.js'
+import * as esbuildNative from 'https://deno.land/x/esbuild@v0.14.51/mod.js'
+export const esbuild = Deno.run ? esbuildNative : esbuildWasm
+export { denoPlugin } from 'https://deno.land/x/esbuild_deno_loader@0.5.2/mod.ts'
+export * as path from 'https://deno.land/std@0.150.0/path/mod.ts'

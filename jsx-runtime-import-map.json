@@ -1,0 +1,7 @@
+{
+    "imports": {
+        "relax": "./jsx.ts", 
+        "relax/jsx-runtime": "./jsx.ts",
+        "relax/jsx-dev-runtime": "./jsx.ts"
+    }
+}
