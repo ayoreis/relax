@@ -1,13 +1,19 @@
-import { Status } from 'https://deno.land/std@0.159.0/http/http_status.ts'
+import { MaybePromise } from '../shared/types.ts'
 
-type MaybeAsync<T> = T | Promise<T>
-
-type Handler = (
-	request: Request,
+export type Handler = (
+	request: unknown,
 	parameters: URLPatternResult | null,
-) => MaybeAsync<Response>
+) => MaybePromise<unknown>
+export type RequestMiddleware = (
+	request: Request,
+) => MaybePromise<Request | void>
+export type ResponseMiddleware = (
+	request: Request,
+	response: unknown,
+) => MaybePromise<Response | void>
 
-type Method =
+// https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
+export type Method =
 	| 'GET'
 	| 'HEAD'
 	| 'POST'
@@ -37,67 +43,88 @@ export class Router {
 		PATCH: new Set(),
 	} as const
 
-	#addRoute(method: Method, pathname: string, handler: Handler) {
+	#requestMiddlewares: Set<RequestMiddleware> = new Set()
+	#responseMiddlewares: Set<ResponseMiddleware> = new Set()
+
+	#addRoute(method: Method, path: string, handler: Handler) {
 		this.#routes[method].add({
-			pattern: new URLPattern({ pathname }),
+			pattern: new URLPattern({ pathname: path }),
 			handler,
 		})
+
+		return this
 	}
 
 	all(path: string, handler: Handler) {
-		for (const method of Object.values(this.#routes)) {
-			method.add({
-				pattern: new URLPattern({ pathname: path }),
-				handler,
-			})
+		for (const method of Object.keys(this.#routes)) {
+			this.#addRoute(method as Method, path, handler)
 		}
+
+		return this
 	}
 
 	get(path: string, handler: Handler) {
-		this.#addRoute('GET', path, handler)
+		return this.#addRoute('GET', path, handler)
 	}
 
 	head(path: string, handler: Handler) {
-		this.#addRoute('HEAD', path, handler)
+		return this.#addRoute('HEAD', path, handler)
 	}
 
 	post(path: string, handler: Handler) {
-		this.#addRoute('POST', path, handler)
+		return this.#addRoute('POST', path, handler)
 	}
 
 	put(path: string, handler: Handler) {
-		this.#addRoute('PUT', path, handler)
+		return this.#addRoute('PUT', path, handler)
 	}
 
 	delete(path: string, handler: Handler) {
-		this.#addRoute('DELETE', path, handler)
+		return this.#addRoute('DELETE', path, handler)
 	}
 
 	connect(path: string, handler: Handler) {
-		this.#addRoute('CONNECT', path, handler)
+		return this.#addRoute('CONNECT', path, handler)
 	}
 
 	options(path: string, handler: Handler) {
-		this.#addRoute('OPTIONS', path, handler)
+		return this.#addRoute('OPTIONS', path, handler)
 	}
 
 	trace(path: string, handler: Handler) {
-		this.#addRoute('TRACE', path, handler)
+		return this.#addRoute('TRACE', path, handler)
 	}
 
 	patch(path: string, handler: Handler) {
-		this.#addRoute('PATCH', path, handler)
+		return this.#addRoute('PATCH', path, handler)
 	}
 
-	handle(request: Request): MaybeAsync<Response> {
+	requestMiddleware(requestMiddleware: RequestMiddleware) {
+		this.#requestMiddlewares.add(requestMiddleware)
+	}
+
+	responseMiddleware(responseMiddleware: ResponseMiddleware) {
+		this.#responseMiddlewares.add(responseMiddleware)
+	}
+
+	fetch = async (request: Request) => {
 		for (const route of this.#routes[request.method as Method]) {
 			if (route.pattern.test(request.url)) {
-				const parameters = route.pattern.exec(request.url)
+				for (const requestMiddleware of this.#requestMiddlewares) {
+					request = (await requestMiddleware(request)) ?? request
+				}
 
-				return route.handler(request, parameters)
+				const parameters = route.pattern.exec(request.url)
+				let response = await route.handler(request, parameters)
+
+				for (const responseMiddleware of this.#responseMiddlewares) {
+					response = responseMiddleware(request, response) ?? response
+				}
+
+				if (typeof request !== 'undefined') {
+					return response
+				}
 			}
 		}
-
-		return new Response(null, { status: Status.NotFound })
 	}
 }
