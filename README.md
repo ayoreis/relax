@@ -1,53 +1,22 @@
-# relax
-The <!-- hybrid (not yet) --> framework like library, for building modern-websites, on the modern-web.
+<h1 align="center">Relax</h1>
 
-## Example 
-> **Note**
-> This example works in [Deno Deploy](https://deno.com/deploy).
+For making websites.
 
-```tsx
-// greetings.ts
-export function sayWelcome(name: string) {
-    return `😎 Welcome to Relax ${ name }!`
-}
+I'm working on a [`Request`](https://developer.mozilla.org/en-US/docs/Web/API/Request)–[`Response`](https://developer.mozilla.org/en-US/docs/Web/API/Response)-router ([`Check it out!`](/router/router.ts)), and on a HTML Parser that uses [Template literals](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals) and keep element references, eg
 
-// welcome-message.relax
-<welcome-message name="Someone on the internet">
-    <script>
-        import { sayWelcome } from './greetings.ts'
+```ts
+const name = template`<span>🐶 Dog</span>`
+const greeting = template`<h1>Hi ${name}! Welcome to Relax.</h1>`
 
-        const message = sayWelcome(name)
-    </script>
+name.textContent = '😸 Cat'
 
-    <template>
-        <h1>{ message }</h1>
-    </template>
-</welcome-message>
-
-// mod.tsx
-import { registerComponents } from 'https://deno.land/x/relax@0.1.0/register-components.ts'
-await registerComponents([ 'welcome-message.relax' ])
-
-console.log(await (<welcome-message name="Ayo Reis"></welcome-message>))
+console.log(greeting) // <h1>Hi <span>😸 Cat</span>! Welcome to Relax.</h1>
 ```
 
-```jsonc
-// deno.json
-{
-    "compilerOptions": {
-        "jsx": "react-jsx",
-        "jsxImportSource": "relax"
-    },
+It's not ready yet but the code's at [/templating](/templating).
 
-    "importMap": "import-map.json"
-}
+Check out [ayoreis.com](//ayoreis.com) for a website using this!
 
-// import-map.json
-{
-    "imports": {
-        "relax": "https://deno.land/x/relax@0.1.0/jsx.ts", 
-        "relax/jsx-runtime": "https://deno.land/x/relax@0.1.0/jsx.ts",
-        "relax/jsx-dev-runtime": "https://deno.land/x/relax@0.1.0/jsx.ts"
-    }
-}
-```
+---
+
+_Made by [Ayo](//ayoreis.com) with 💖._
