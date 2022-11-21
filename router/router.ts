@@ -1,6 +1,6 @@
 import { MaybePromise } from '../shared/types.ts'
 
-// https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
+/** https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods */
 export type Method =
 	| 'GET'
 	| 'HEAD'
@@ -12,26 +12,28 @@ export type Method =
 	| 'TRACE'
 	| 'PATCH'
 
-export type Handler = (
-	request: unknown,
-	parameters: URLPatternResult | null,
-) => MaybePromise<unknown>
-
-export type RequestMiddleware = (
+export type BeforeMiddlewareCallback = (
 	request: Request,
-) => MaybePromise<Request | void>
+	URLPattern: URLPatternResult | null,
+) => MaybePromise<void>
 
-export type ResponseMiddleware = (
+export type HandlerCallback = (
 	request: Request,
-	response: unknown,
+	parameters: URLPatternComponentResult['groups'],
 ) => MaybePromise<Response | void>
+
+export type AfterMiddlewareCallback = (
+	request: Request,
+	URLPattern: URLPatternResult | null,
+	response: Response,
+) => MaybePromise<void>
 
 export class Router {
 	#routes: Record<
 		Method,
 		Set<{
-			pattern: URLPattern
-			handler: Handler
+			URLPattern: URLPattern
+			handler: HandlerCallback
 		}>
 	> = {
 		GET: new Set(),
@@ -45,88 +47,92 @@ export class Router {
 		PATCH: new Set(),
 	} as const
 
-	#requestMiddlewares: Set<RequestMiddleware> = new Set()
-	#responseMiddlewares: Set<ResponseMiddleware> = new Set()
+	#beforeMiddleware = new Set<BeforeMiddlewareCallback>()
+	#afterMiddleware = new Set<AfterMiddlewareCallback>()
 
-	#addRoute(method: Method, path: string, handler: Handler) {
+	#addRoute(method: Method, path: string, handler: HandlerCallback) {
 		this.#routes[method].add({
-			pattern: new URLPattern({ pathname: path }),
+			URLPattern: new URLPattern({ pathname: path }),
 			handler,
 		})
 
 		return this
 	}
 
-	all(path: string, handler: Handler) {
-		for (const method of Object.keys(this.#routes)) {
+	all(path: string, handler: HandlerCallback) {
+		for (const method in this.#routes) {
 			this.#addRoute(method as Method, path, handler)
 		}
 
 		return this
 	}
 
-	get(path: string, handler: Handler) {
+	get(path: string, handler: HandlerCallback) {
 		return this.#addRoute('GET', path, handler)
 	}
 
-	head(path: string, handler: Handler) {
+	head(path: string, handler: HandlerCallback) {
 		return this.#addRoute('HEAD', path, handler)
 	}
 
-	post(path: string, handler: Handler) {
+	post(path: string, handler: HandlerCallback) {
 		return this.#addRoute('POST', path, handler)
 	}
 
-	put(path: string, handler: Handler) {
+	put(path: string, handler: HandlerCallback) {
 		return this.#addRoute('PUT', path, handler)
 	}
 
-	delete(path: string, handler: Handler) {
+	delete(path: string, handler: HandlerCallback) {
 		return this.#addRoute('DELETE', path, handler)
 	}
 
-	connect(path: string, handler: Handler) {
+	connect(path: string, handler: HandlerCallback) {
 		return this.#addRoute('CONNECT', path, handler)
 	}
 
-	options(path: string, handler: Handler) {
+	options(path: string, handler: HandlerCallback) {
 		return this.#addRoute('OPTIONS', path, handler)
 	}
 
-	trace(path: string, handler: Handler) {
+	trace(path: string, handler: HandlerCallback) {
 		return this.#addRoute('TRACE', path, handler)
 	}
 
-	patch(path: string, handler: Handler) {
+	patch(path: string, handler: HandlerCallback) {
 		return this.#addRoute('PATCH', path, handler)
 	}
 
-	requestMiddleware(requestMiddleware: RequestMiddleware) {
-		this.#requestMiddlewares.add(requestMiddleware)
+	before(beforeMiddlewareCallback: BeforeMiddlewareCallback) {
+		this.#beforeMiddleware.add(beforeMiddlewareCallback)
 	}
 
-	responseMiddleware(responseMiddleware: ResponseMiddleware) {
-		this.#responseMiddlewares.add(responseMiddleware)
+	after(afterMiddlewareCallback: AfterMiddlewareCallback) {
+		this.#afterMiddleware.add(afterMiddlewareCallback)
 	}
 
 	fetch = async (request: Request) => {
 		for (const route of this.#routes[request.method as Method]) {
-			if (route.pattern.test(request.url)) {
-				for (const requestMiddleware of this.#requestMiddlewares) {
-					request = (await requestMiddleware(request)) ?? request
-				}
+			if (!route.URLPattern.test(request.url)) continue
 
-				const parameters = route.pattern.exec(request.url)
-				let response = await route.handler(request, parameters)
+			const URLPatternResult = route.URLPattern.exec(request.url)
 
-				for (const responseMiddleware of this.#responseMiddlewares) {
-					response = responseMiddleware(request, response) ?? response
-				}
-
-				if (typeof request !== 'undefined') {
-					return response
-				}
+			for (const beforeMiddleware of this.#beforeMiddleware) {
+				await beforeMiddleware(request, URLPatternResult)
 			}
+
+			const response = await route.handler(
+				request,
+				URLPatternResult?.pathname.groups ?? {},
+			)
+
+			if (typeof response === 'undefined') continue
+
+			for (const responseMiddleware of this.#afterMiddleware) {
+				responseMiddleware(request, URLPatternResult, response!)
+			}
+
+			return response
 		}
 	}
 }
