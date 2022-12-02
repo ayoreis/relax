@@ -20,9 +20,9 @@ router.get('*', () => {
 Deno.serve(router.fetch)
 ```
 
-([`Checkout the code!`](/router/router.ts))
+[`[Check out the code!]`](/router/router.ts)
 
-And on a HTML Parser that uses [Template literals](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals) and keep element references.
+And on a HTML Parser that uses [Template literals](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals) and keeps element references.
 
 ```ts
 const name = template`<span>🐶 Dog</span>`
@@ -35,7 +35,7 @@ console.log(greeting) // <h1>Hi <span>😸 Cat</span>! Welcome to Relax.</h1>
 
 It's not ready yet but the code's at [/templating](/templating).
 
-Check out [ayoreis.com](//ayoreis.com) for a simple website using Relax!
+Check out [ayoreis.com](../../../ayoreis.com) for a simple website using Relax!
 
 ---
 
