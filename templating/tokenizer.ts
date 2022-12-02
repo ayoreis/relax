@@ -27,86 +27,93 @@ import namedCharacterReferences from './named-character-references.json' assert 
 
 type State = () => void
 
-const NAMED_CHARACTER_REFERENCE_REGEX = new RegExp(
+const NEXT_NAMED_CHARACTER_REFERENCE_REGEX = new RegExp(
 	`^(?:${Object.keys(namedCharacterReferences).join('|')})`,
 )
 
 /** https://html.spec.whatwg.org/multipage/parsing.html#tokenization */
-export function tokenize(input: string) {
-	let index = 0
+export class Tokenizer {
+	#input: string
+	#index = 0
 	/** https://html.spec.whatwg.org/multipage/parsing.html#current-input-character */
-	let currentInputCharacter: string
+	#currentInputCharacter!: string
 	/** https://html.spec.whatwg.org/multipage/parsing.html#next-input-character */
-	let nextInputCharacter = input[index]
-	let isEndOfFile: boolean
-	let currentToken: Token
+	#nextInputCharacter: string
+	#isEndOfFile = false
+	#currentToken!: Token
 	/** https://html.spec.whatwg.org/multipage/parsing.html#return-state */
-	let returnState: State
-	let nextFewCharacters = input
-	let state: State
+	#returnState!: State
+	#nextFewCharacters: string
+	#state: State = this.dataState
 	/** https://html.spec.whatwg.org/multipage/parsing.html#temporary-buffer */
-	let temporaryBuffer: string
+	#temporaryBuffer!: string
 	/** https://html.spec.whatwg.org/multipage/parsing.html#appropriate-end-tag-token */
-	let lastEmitedStartTagToken: StartTagToken
-	let currentAttribute: Attribute
+	#lastEmitedStartTagToken!: StartTagToken
+	#currentAttribute!: Attribute
 	/** https://html.spec.whatwg.org/multipage/parsing.html#charref-in-attribute */
-	let consumedAsPartOfAttribute: boolean
+	#consumedAsPartOfAttribute!: boolean
 	/** https://html.spec.whatwg.org/multipage/parsing.html#character-reference-code */
-	let characterReferenceCode: number
+	#characterReferenceCode!: number
+
+	constructor(input: string) {
+		this.#input = input
+		this.#nextInputCharacter = this.#input[this.#index]
+		this.#nextFewCharacters = this.#input
+	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#appropriate-end-tag-token */
-	function isAppropriateEndTagToken(endTagToken: EndTagToken) {
-		return lastEmitedStartTagToken.tagName === endTagToken.tagName
+	isAppropriateEndTagToken(endTagToken: EndTagToken) {
+		return this.#lastEmitedStartTagToken.tagName === endTagToken.tagName
 	}
 
-	function consume(string: string) {
-		consumedAsPartOfAttribute =
-			returnState === attributeValueDoubleQuotedState ||
-			returnState === attributeValueSingleQuotedState ||
-			returnState === attributeValueUnquotedState
+	consume(string: string) {
+		this.#consumedAsPartOfAttribute =
+			this.#returnState === this.attributeValueDoubleQuotedState ||
+			this.#returnState === this.attributeValueSingleQuotedState ||
+			this.#returnState === this.attributeValueUnquotedState
 
-		isEndOfFile = typeof string === 'undefined'
+		this.#isEndOfFile = typeof string === 'undefined'
 
-		if (isEndOfFile) return
+		if (this.#isEndOfFile) return
 
-		index += string.length
-		currentInputCharacter = string.at(-1)!
-		nextInputCharacter = input[index]
-		nextFewCharacters = input.slice(index)
+		this.#index += string.length
+		this.#currentInputCharacter = string.at(-1)!
+		this.#nextInputCharacter = this.#input[this.#index]
+		this.#nextFewCharacters = this.#input.slice(this.#index)
 	}
 
-	/** https://html.spec.whatwg.org/multipage/parsing.html#reconsume */
-	function reconsumeIn(state: State) {
-		index--
-		nextInputCharacter = currentInputCharacter
+	/** https://html.spec.whatwg.org/multipage/parsing.html#rethis.consume */
+	reconsumeIn(state: State) {
+		this.#index--
+		this.#nextInputCharacter = this.#currentInputCharacter
 
-		switchTo(state)
+		this.switchTo(state)
 	}
 
-	/** https://html.spec.whatwg.org/multipage/parsing.html#flush-code-points-consumed-as-a-character-reference */
-	function flushCodePointsConsumedAsCharacterReference() {
+	/** https://html.spec.whatwg.org/multipage/parsing.html#flush-code-points-this.consumed-as-a-character-reference */
+	flushCodePointsConsumedAsCharacterReference() {
 		/** https://infra.spec.whatwg.org/#code-point */
-		for (const codePoint of temporaryBuffer) {
-			if (consumedAsPartOfAttribute) {
-				currentAttribute.value += codePoint
+		for (const codePoint of this.#temporaryBuffer) {
+			if (this.#consumedAsPartOfAttribute) {
+				this.#currentAttribute.value += codePoint
 			} else {
-				emit(new CharacterToken(codePoint))
+				this.emit(new CharacterToken(codePoint))
 			}
 		}
 	}
 
-	function emit(token: Token) {
+	emit(token: Token) {
 		if (token instanceof StartTagToken) {
-			lastEmitedStartTagToken = token
+			this.#lastEmitedStartTagToken = token
 		}
 
 		console.log(token)
 	}
 
-	function switchTo(newState: State) {
-		if (state === attributeNameState) {
+	switchTo(newState: State) {
+		if (this.#state === this.attributeNameState) {
 			const usedNames = new Set<string>()
-			const { attributes } = currentToken
+			const { attributes } = this.#currentToken
 
 			for (const attribute of attributes) {
 				const { name } = attribute
@@ -120,1649 +127,1674 @@ export function tokenize(input: string) {
 			}
 		}
 
-		state = newState
+		this.#state = newState
 	}
 
-	function nextFewCharactersAre(matcher: string | RegExp) {
+	nextFewCharactersAre(matcher: string | RegExp) {
 		if (typeof matcher === 'string')
-			return nextFewCharacters.startsWith(matcher)
+			return this.#nextFewCharacters.startsWith(matcher)
 
 		return new RegExp(
 			`^${matcher.source.replace(/^\^?(?<RegEx>.*?)\$?$/, '$<RegEx>')}`,
-		).test(nextFewCharacters)
+		).test(this.#nextFewCharacters)
 	}
 
-	//////// STATE ////////
-
 	/** https://html.spec.whatwg.org/multipage/parsing.html#data-state */
-	function dataState() {
-		consume(nextInputCharacter)
+	dataState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '&') {
-			returnState = dataState
-			switchTo(characterReferenceState)
-		} else if (currentInputCharacter === '<') {
-			switchTo(tagOpenState)
-		} else if (currentInputCharacter === '\0') {
-			emit(new CharacterToken(currentInputCharacter))
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '&') {
+			this.#returnState = this.dataState
+			this.switchTo(this.characterReferenceState)
+		} else if (this.#currentInputCharacter === '<') {
+			this.switchTo(this.tagOpenState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.emit(new CharacterToken(this.#currentInputCharacter))
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			emit(new CharacterToken(currentInputCharacter))
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#rcdata-state */
-	function RCDATAState() {
-		consume(nextInputCharacter)
+	RCDATAState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '&') {
-			returnState = RCDATAState
-			switchTo(characterReferenceState)
-		} else if (currentInputCharacter === '<') {
-			switchTo(RCDATALessThanSignState)
-		} else if (currentInputCharacter === '\0') {
-			emit(new CharacterToken('\uFFFD'))
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '&') {
+			this.#returnState = this.RCDATAState
+			this.switchTo(this.characterReferenceState)
+		} else if (this.#currentInputCharacter === '<') {
+			this.switchTo(this.RCDATALessThanSignState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.emit(new CharacterToken('\uFFFD'))
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			emit(new CharacterToken(currentInputCharacter))
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#rawtext-state */
-	function RAWTEXTState() {
-		consume(nextInputCharacter)
+	RAWTEXTState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '<') {
-			switchTo(RAWTEXTLessThanSignState)
-		} else if (currentInputCharacter === '\0') {
-			emit(new CharacterToken('\uFFFD'))
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '<') {
+			this.switchTo(this.RAWTEXTLessThanSignState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.emit(new CharacterToken('\uFFFD'))
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			emit(new CharacterToken(currentInputCharacter))
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-state */
-	function scriptDataState() {
-		consume(nextInputCharacter)
+	scriptDataState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '<') {
-			switchTo(scriptDataLessThanSignState)
-		} else if (currentInputCharacter === '\0') {
-			emit(new CharacterToken('\uFFFD'))
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '<') {
+			this.switchTo(this.scriptDataLessThanSignState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.emit(new CharacterToken('\uFFFD'))
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			emit(new CharacterToken(currentInputCharacter))
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#plaintext-state */
-	function PLAINTEXT() {
-		consume(nextInputCharacter)
+	PLAINTEXTState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '\0') {
-			emit(new CharacterToken('\uFFFD'))
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '\0') {
+			this.emit(new CharacterToken('\uFFFD'))
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			emit(new CharacterToken(currentInputCharacter))
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#tag-open-state */
-	function tagOpenState() {
-		consume(nextInputCharacter)
+	tagOpenState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '!') {
-			switchTo(markupDeclarationOpenState)
-		} else if (currentInputCharacter === '/') {
-			switchTo(endTagOpenState)
-		} else if (isASCIIAlpha(currentInputCharacter)) {
-			currentToken = new StartTagToken({ tagName: '' })
-			reconsumeIn(tagNameState)
-		} else if (currentInputCharacter === '?') {
-			currentToken = new CommentToken('')
-			reconsumeIn(bogusCommentStateState)
-		} else if (isEndOfFile) {
-			emit(new CharacterToken('<'))
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '!') {
+			this.switchTo(this.markupDeclarationOpenState)
+		} else if (this.#currentInputCharacter === '/') {
+			this.switchTo(this.endTagOpenState)
+		} else if (isASCIIAlpha(this.#currentInputCharacter)) {
+			this.#currentToken = new StartTagToken({ tagName: '' })
+			this.reconsumeIn(this.tagNameState)
+		} else if (this.#currentInputCharacter === '?') {
+			this.#currentToken = new CommentToken('')
+			this.reconsumeIn(this.bogusCommentState)
+		} else if (this.#isEndOfFile) {
+			this.emit(new CharacterToken('<'))
+			this.emit(new EndOfFileToken())
 		} else {
-			emit(new CharacterToken('<'))
-			reconsumeIn(dataState)
+			this.emit(new CharacterToken('<'))
+			this.reconsumeIn(this.dataState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#end-tag-open-state */
-	function endTagOpenState() {
-		consume(nextInputCharacter)
+	endTagOpenState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (isASCIIAlpha(currentInputCharacter)) {
-			currentToken = new EndTagToken({ tagName: '' })
-			reconsumeIn(tagNameState)
-		} else if (currentInputCharacter === '>') {
-			switchTo(data)
-		} else if (isEndOfFile) {
-			emit(new CharacterToken('<'))
-			emit(new CharacterToken('/'))
-			emit(new EndOfFileToken())
+		if (isASCIIAlpha(this.#currentInputCharacter)) {
+			this.#currentToken = new EndTagToken({ tagName: '' })
+			this.reconsumeIn(this.tagNameState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+		} else if (this.#isEndOfFile) {
+			this.emit(new CharacterToken('<'))
+			this.emit(new CharacterToken('/'))
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken = new CommentToken('')
-			reconsumeIn(bogusCommentState)
+			this.#currentToken = new CommentToken('')
+			this.reconsumeIn(this.bogusCommentState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#tag-name-state */
-	function tagNameState() {
-		consume(nextInputCharacter)
+	tagNameState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-			switchTo(beforeAttributeNameState)
-		} else if (currentInputCharacter === '/') {
-			switchTo(selfClosingStartTagState)
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState) //
-			emit(currentToken)
-		} else if (isASCIIUpperAlpha(currentInputCharacter)) {
-			currentToken.tagName += currentInputCharacter.toLowerCase()
-		} else if (currentInputCharacter === '\0') {
-			currentToken.tagName += '\uFFFD'
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+			this.switchTo(this.beforeAttributeNameState)
+		} else if (this.#currentInputCharacter === '/') {
+			this.switchTo(this.selfClosingStartTagState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState) //
+			this.emit(this.#currentToken)
+		} else if (isASCIIUpperAlpha(this.#currentInputCharacter)) {
+			this.#currentToken.tagName +=
+				this.#currentInputCharacter.toLowerCase()
+		} else if (this.#currentInputCharacter === '\0') {
+			this.#currentToken.tagName += '\uFFFD'
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.tagName += currentInputCharacter
+			this.#currentToken.tagName += this.#currentInputCharacter
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#rcdata-less-than-sign-state */
-	function RCDATALessThanSignState() {
-		consume(nextInputCharacter)
+	RCDATALessThanSignState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '/') {
-			temporaryBuffer = ''
-			switchTo(RCDATAEndTagState)
+		if (this.#currentInputCharacter === '/') {
+			this.#temporaryBuffer = ''
+			this.switchTo(this.RCDATAEndTagOpenState)
 		} else {
-			emit(new CharacterToken('\u003C'))
-			reconsumeIn(RCDATAState)
+			this.emit(new CharacterToken('\u003C'))
+			this.reconsumeIn(this.RCDATAState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#rcdata-end-tag-open-state */
-	function RCDATAEndTagOpenState() {
-		consume(nextInputCharacter)
+	RCDATAEndTagOpenState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (isASCIIAlpha(currentInputCharacter)) {
-			currentToken = new EndTagToken({ tagName: '' })
-			reconsumeIn(RCDATAEndTagNameState)
+		if (isASCIIAlpha(this.#currentInputCharacter)) {
+			this.#currentToken = new EndTagToken({ tagName: '' })
+			this.reconsumeIn(this.RCDATAEndTagNameState)
 		} else {
-			emit(new CharacterToken('<'))
-			emit(new CharacterToken('/'))
-			reconsumeIn(RCDATAState)
+			this.emit(new CharacterToken('<'))
+			this.emit(new CharacterToken('/'))
+			this.reconsumeIn(this.RCDATAState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#rcdata-end-tag-name-state */
-	function RCDATAEndTagNameState() {
-		consume(nextInputCharacter)
+	RCDATAEndTagNameState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			(currentInputCharacter === '\t' ||
-				currentInputCharacter === '\n' ||
-				currentInputCharacter === '\f' ||
-				currentInputCharacter === ' ') &&
-			isAppropriateEndTagToken(currentToken)
+			(this.#currentInputCharacter === '\t' ||
+				this.#currentInputCharacter === '\n' ||
+				this.#currentInputCharacter === '\f' ||
+				this.#currentInputCharacter === ' ') &&
+			this.isAppropriateEndTagToken(this.#currentToken)
 		) {
-			switchTo(beforeAttributeNameState)
+			this.switchTo(this.beforeAttributeNameState)
 		} else if (
-			currentInputCharacter == '/' &&
-			isAppropriateEndTagToken(currentToken)
+			this.#currentInputCharacter == '/' &&
+			this.isAppropriateEndTagToken(this.#currentToken)
 		) {
-			switchTo(selfClosingStartTagState)
+			this.switchTo(this.selfClosingStartTagState)
 		} else if (
-			currentInputCharacter === '>' &&
-			isAppropriateEndTagToken(currentToken)
+			this.#currentInputCharacter === '>' &&
+			this.isAppropriateEndTagToken(this.#currentToken)
 		) {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isASCIIUpperAlpha(currentInputCharacter)) {
-			currentToken.tagName += currentInputCharacter.toLowerCase()
-			temporaryBuffer += currentInputCharacter
-		} else if (isASCIILowerAlpha(currentInputCharacter)) {
-			currentToken.tagName += currentInputCharacter
-			temporaryBuffer += currentInputCharacter
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (isASCIIUpperAlpha(this.#currentInputCharacter)) {
+			this.#currentToken.tagName +=
+				this.#currentInputCharacter.toLowerCase()
+			this.#temporaryBuffer += this.#currentInputCharacter
+		} else if (isASCIILowerAlpha(this.#currentInputCharacter)) {
+			this.#currentToken.tagName += this.#currentInputCharacter
+			this.#temporaryBuffer += this.#currentInputCharacter
 		} else {
-			emit(new CharacterToken('<'))
-			emit(new CharacterToken('/'))
+			this.emit(new CharacterToken('<'))
+			this.emit(new CharacterToken('/'))
 
-			for (const character of temporaryBuffer) {
-				emit(new CharacterToken(character))
+			for (const character of this.#temporaryBuffer) {
+				this.emit(new CharacterToken(character))
 			}
 
-			reconsumeIn(RCDATAState)
+			this.reconsumeIn(this.RCDATAState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#rawtext-less-than-sign-state */
-	function RAWTEXTLessThanSignState() {
-		consume(nextInputCharacter)
+	RAWTEXTLessThanSignState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '/') {
-			temporaryBuffer = ''
-			switchTo(RAWTEXTEndTagOpenState)
+		if (this.#currentInputCharacter === '/') {
+			this.#temporaryBuffer = ''
+			this.switchTo(this.RAWTEXTEndTagOpenState)
 		} else {
-			emit(new CharacterToken('<'))
-			reconsumeIn(RAWTEXTState)
+			this.emit(new CharacterToken('<'))
+			this.reconsumeIn(this.RAWTEXTState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#rawtext-end-tag-open-state */
-	function RAWTEXTEndTagOpenState() {
-		consume(nextInputCharacter)
+	RAWTEXTEndTagOpenState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (isASCIIAlpha(currentInputCharacter)) {
-			currentToken = new EndTagToken({ tagName: '' })
-			reconsumeIn(RAWTEXTEndTagNameState)
+		if (isASCIIAlpha(this.#currentInputCharacter)) {
+			this.#currentToken = new EndTagToken({ tagName: '' })
+			this.reconsumeIn(this.RAWTEXTEndTagNameState)
 		} else {
-			emit(new CharacterToken('-'))
-			emit(new CharacterToken('/'))
-			reconsumeIn(RAWTEXTState)
+			this.emit(new CharacterToken('-'))
+			this.emit(new CharacterToken('/'))
+			this.reconsumeIn(this.RAWTEXTState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#rawtext-end-tag-name-state */
-	function RAWTEXTEndTagNameState() {
-		consume(nextFewCharacters)
+	RAWTEXTEndTagNameState() {
+		this.consume(this.#nextFewCharacters)
 
 		if (
-			(currentInputCharacter === '\t' ||
-				currentInputCharacter === '\n' ||
-				currentInputCharacter === '\f' ||
-				currentInputCharacter === ' ') &&
-			isAppropriateEndTagToken(currentToken)
+			(this.#currentInputCharacter === '\t' ||
+				this.#currentInputCharacter === '\n' ||
+				this.#currentInputCharacter === '\f' ||
+				this.#currentInputCharacter === ' ') &&
+			this.isAppropriateEndTagToken(this.#currentToken)
 		) {
-			switchTo(beforeAttributeNameState)
+			this.switchTo(this.beforeAttributeNameState)
 		} else if (
-			currentInputCharacter === '/' &&
-			isAppropriateEndTagToken(currentToken)
+			this.#currentInputCharacter === '/' &&
+			this.isAppropriateEndTagToken(this.#currentToken)
 		) {
-			switchTo(selfClosingStartTagState)
+			this.switchTo(this.selfClosingStartTagState)
 		} else if (
-			currentInputCharacter === '>' &&
-			isAppropriateEndTagToken(currentToken)
+			this.#currentInputCharacter === '>' &&
+			this.isAppropriateEndTagToken(this.#currentToken)
 		) {
-			switchTo(dataState)
-		} else if (isASCIIUpperAlpha(currentInputCharacter)) {
-			currentToken.tagName += currentInputCharacter.toLowerCase()
-			temporaryBuffer += currentInputCharacter
-		} else if (isASCIILowerAlpha(currentInputCharacter)) {
-			currentToken.tagName += currentInputCharacter
-			temporaryBuffer += currentInputCharacter
+			this.switchTo(this.dataState)
+		} else if (isASCIIUpperAlpha(this.#currentInputCharacter)) {
+			this.#currentToken.tagName +=
+				this.#currentInputCharacter.toLowerCase()
+			this.#temporaryBuffer += this.#currentInputCharacter
+		} else if (isASCIILowerAlpha(this.#currentInputCharacter)) {
+			this.#currentToken.tagName += this.#currentInputCharacter
+			this.#temporaryBuffer += this.#currentInputCharacter
 		} else {
-			emit(new CharacterToken('<'))
-			emit(new CharacterToken('/'))
+			this.emit(new CharacterToken('<'))
+			this.emit(new CharacterToken('/'))
 
-			for (const character of temporaryBuffer) {
-				emit(new CharacterToken(character))
+			for (const character of this.#temporaryBuffer) {
+				this.emit(new CharacterToken(character))
 			}
 
-			reconsumeIn(RAWTEXTState)
+			this.reconsumeIn(this.RAWTEXTState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-less-than-sign-state */
-	function scriptDataLessThanSignState() {
-		consume(nextInputCharacter)
+	scriptDataLessThanSignState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '/') {
-			temporaryBuffer = ''
-			switchTo(scriptDataEndTagOpenState)
-		} else if (currentInputCharacter === '!') {
-			switchTo(scriptDataEscapeStartState)
-			emit(new CharacterToken('<'))
-			emit(new CharacterToken('!'))
+		if (this.#currentInputCharacter === '/') {
+			this.#temporaryBuffer = ''
+			this.switchTo(this.scriptDataEndTagOpenState)
+		} else if (this.#currentInputCharacter === '!') {
+			this.switchTo(this.scriptDataEscapeStartState)
+			this.emit(new CharacterToken('<'))
+			this.emit(new CharacterToken('!'))
 		} else {
-			emit(new CharacterToken('<'))
-			reconsumeIn(scriptDataState)
+			this.emit(new CharacterToken('<'))
+			this.reconsumeIn(this.scriptDataState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-end-tag-open-state */
-	function scriptDataEndTagOpenState() {
-		consume(nextInputCharacter)
+	scriptDataEndTagOpenState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (isASCIIAlpha(currentInputCharacter)) {
-			currentToken = new EndTagToken({ tagName: '' })
-			reconsumeIn(scriptDataEndTagNameState)
+		if (isASCIIAlpha(this.#currentInputCharacter)) {
+			this.#currentToken = new EndTagToken({ tagName: '' })
+			this.reconsumeIn(this.scriptDataEndTagNameState)
 		} else {
-			emit(new CharacterToken('<'))
-			emit(new CharacterToken('/'))
-			reconsumeIn(scriptDataState)
+			this.emit(new CharacterToken('<'))
+			this.emit(new CharacterToken('/'))
+			this.reconsumeIn(this.scriptDataState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-end-tag-name-state */
-	function scriptDataEndTagNameState() {
-		consume(nextInputCharacter)
+	scriptDataEndTagNameState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			(currentInputCharacter === '\t' ||
-				currentInputCharacter === '\n' ||
-				currentInputCharacter === '\f' ||
-				currentInputCharacter === ' ') &&
-			isAppropriateEndTagToken(currentToken)
+			(this.#currentInputCharacter === '\t' ||
+				this.#currentInputCharacter === '\n' ||
+				this.#currentInputCharacter === '\f' ||
+				this.#currentInputCharacter === ' ') &&
+			this.isAppropriateEndTagToken(this.#currentToken)
 		) {
-			switchTo(beforeAttributeNameState)
+			this.switchTo(this.beforeAttributeNameState)
 		} else if (
-			currentInputCharacter === '/' &&
-			isAppropriateEndTagToken(currentToken)
+			this.#currentInputCharacter === '/' &&
+			this.isAppropriateEndTagToken(this.#currentToken)
 		) {
-			switchTo(selfClosingStartTagState)
+			this.switchTo(this.selfClosingStartTagState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-escape-start-state */
-	function scriptDataEscapeStartState() {
-		consume(nextInputCharacter)
+	scriptDataEscapeStartState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			switchTo(scriptDataEscapeStartDashState)
-			emit(new CharacterToken('-'))
+		if (this.#currentInputCharacter === '-') {
+			this.switchTo(this.scriptDataEscapeStartDashState)
+			this.emit(new CharacterToken('-'))
 		} else {
-			reconsumeIn(scriptDataState)
+			this.reconsumeIn(this.scriptDataState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-escape-start-dash-state */
-	function scriptDataEscapeStartDashState() {
-		consume(nextInputCharacter)
+	scriptDataEscapeStartDashState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			switchTo(scriptDataEscapedDashDashState)
+		if (this.#currentInputCharacter === '-') {
+			this.switchTo(this.scriptDataEscapedDashDashState)
 		} else {
-			reconsumeIn(scriptDataState)
+			this.reconsumeIn(this.scriptDataState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-state */
-	function scriptDataEscapedState() {
-		consume(nextInputCharacter)
+	scriptDataEscapedState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			switchTo(scriptDataEscapedDashState)
-			emit(new CharacterToken('-'))
-		} else if (currentInputCharacter === '<') {
-			switchTo(scriptDataEscapedLessThanSignState)
-		} else if (currentInputCharacter === '\0') {
-			emit(new CharacterToken('\uFFFD'))
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '-') {
+			this.switchTo(this.scriptDataEscapedDashState)
+			this.emit(new CharacterToken('-'))
+		} else if (this.#currentInputCharacter === '<') {
+			this.switchTo(this.scriptDataEscapedLessThanSignState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.emit(new CharacterToken('\uFFFD'))
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			emit(currentInputCharacter)
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-dash-state */
-	function scriptDataEscapedDashState() {
-		consume(nextInputCharacter)
+	scriptDataEscapedDashState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			switchTo(scriptDataEscapedDashDashState)
-			emit(new CharacterToken('-'))
-		} else if (currentInputCharacter === '<') {
-			switchTo(scriptDataEscapedLessThanSignState)
-		} else if (currentInputCharacter === '\0') {
-			switchTo(scriptDataEscapedState)
-			emit(new CharacterToken('\uFFFD'))
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '-') {
+			this.switchTo(this.scriptDataEscapedDashDashState)
+			this.emit(new CharacterToken('-'))
+		} else if (this.#currentInputCharacter === '<') {
+			this.switchTo(this.scriptDataEscapedLessThanSignState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.switchTo(this.scriptDataEscapedState)
+			this.emit(new CharacterToken('\uFFFD'))
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			switchTo(scriptDataEscapedState)
-			emit(new CharacterToken(currentInputCharacter))
+			this.switchTo(this.scriptDataEscapedState)
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-dash-dash-state */
-	function scriptDataEscapedDashDashState() {
-		consume(nextInputCharacter)
+	scriptDataEscapedDashDashState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			emit(new CharacterToken('-'))
-		} else if (currentInputCharacter === '<') {
-			switchTo(scriptDataEscapedLessThanSignState)
-		} else if (currentInputCharacter === '>') {
-			switchTo(scriptDataState)
-			emit(new CharacterToken('>'))
-		} else if (currentInputCharacter === '\0') {
-			switchTo(scriptDataState)
-			emit(new CharacterToken('\uFFFD'))
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '-') {
+			this.emit(new CharacterToken('-'))
+		} else if (this.#currentInputCharacter === '<') {
+			this.switchTo(this.scriptDataEscapedLessThanSignState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.scriptDataState)
+			this.emit(new CharacterToken('>'))
+		} else if (this.#currentInputCharacter === '\0') {
+			this.switchTo(this.scriptDataState)
+			this.emit(new CharacterToken('\uFFFD'))
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			switchTo(scriptDataEscapedState)
-			emit(new CharacterToken(currentInputCharacter))
+			this.switchTo(this.scriptDataEscapedState)
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-less-than-sign-state */
-	function scriptDataEscapedLessThanSignState() {
-		consume(nextInputCharacter)
+	scriptDataEscapedLessThanSignState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '/') {
-			temporaryBuffer = ''
-			switchTo(scriptDataEscapedEndTagOpenState)
-		} else if (isASCIIAlpha(currentInputCharacter)) {
-			temporaryBuffer = ''
-			emit(new CharacterToken('<'))
-			reconsumeIn(scriptDataDoubleEscapeStartState)
+		if (this.#currentInputCharacter === '/') {
+			this.#temporaryBuffer = ''
+			this.switchTo(this.scriptDataEscapedEndTagOpenState)
+		} else if (isASCIIAlpha(this.#currentInputCharacter)) {
+			this.#temporaryBuffer = ''
+			this.emit(new CharacterToken('<'))
+			this.reconsumeIn(this.scriptDataDoubleEscapeStartState)
 		} else {
-			emit(new CharacterToken('<'))
-			reconsumeIn(scriptDataState)
+			this.emit(new CharacterToken('<'))
+			this.reconsumeIn(this.scriptDataState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-end-tag-open-state */
-	function scriptDataEscapedEndTagOpenState() {
-		consume(nextInputCharacter)
+	scriptDataEscapedEndTagOpenState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (isASCIIAlpha(currentInputCharacter)) {
-			currentToken = new EndTagToken({ tagName: '' })
-			reconsumeIn(scriptDataEscapedEndTagNameState)
+		if (isASCIIAlpha(this.#currentInputCharacter)) {
+			this.#currentToken = new EndTagToken({ tagName: '' })
+			this.reconsumeIn(this.scriptDataEscapedEndTagNameState)
 		} else {
-			emit(new CharacterToken('<'))
-			emit(new CharacterToken('/'))
-			reconsumeIn(scriptDataEscapedState)
+			this.emit(new CharacterToken('<'))
+			this.emit(new CharacterToken('/'))
+			this.reconsumeIn(this.scriptDataEscapedState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-escaped-end-tag-name-state */
-	function scriptDataEscapedEndTagNameState() {
-		consume(nextInputCharacter)
+	scriptDataEscapedEndTagNameState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			(currentInputCharacter === '\t' ||
-				currentInputCharacter === '\n' ||
-				currentInputCharacter === '\f' ||
-				currentInputCharacter === ' ') &&
-			isAppropriateEndTagToken(currentToken)
+			(this.#currentInputCharacter === '\t' ||
+				this.#currentInputCharacter === '\n' ||
+				this.#currentInputCharacter === '\f' ||
+				this.#currentInputCharacter === ' ') &&
+			this.isAppropriateEndTagToken(this.#currentToken)
 		) {
-			switchTo(beforeAttributeNameState)
+			this.switchTo(this.beforeAttributeNameState)
 		} else if (
-			currentInputCharacter === '/' &&
-			isAppropriateEndTagToken(currentToken)
+			this.#currentInputCharacter === '/' &&
+			this.isAppropriateEndTagToken(this.#currentToken)
 		) {
-			switchTo(selfClosingStartTagState)
+			this.switchTo(this.selfClosingStartTagState)
 		} else if (
-			currentInputCharacter === '>' &&
-			isAppropriateEndTagToken(currentToken)
+			this.#currentInputCharacter === '>' &&
+			this.isAppropriateEndTagToken(this.#currentToken)
 		) {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isASCIIUpperAlpha(currentInputCharacter)) {
-			currentToken.tagName += currentInputCharacter.toLowerCase()
-			temporaryBuffer += currentInputCharacter.toLowerCase()
-		} else if (isASCIILowerAlpha(currentInputCharacter)) {
-			currentToken.tagName += currentInputCharacter
-			temporaryBuffer += currentInputCharacter
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (isASCIIUpperAlpha(this.#currentInputCharacter)) {
+			this.#currentToken.tagName +=
+				this.#currentInputCharacter.toLowerCase()
+			this.#temporaryBuffer += this.#currentInputCharacter.toLowerCase()
+		} else if (isASCIILowerAlpha(this.#currentInputCharacter)) {
+			this.#currentToken.tagName += this.#currentInputCharacter
+			this.#temporaryBuffer += this.#currentInputCharacter
 		} else {
-			emit(new CharacterToken('<'))
-			emit(new CharacterToken('/'))
+			this.emit(new CharacterToken('<'))
+			this.emit(new CharacterToken('/'))
 
-			for (const character of temporaryBuffer) {
-				emit(new CharacterToken(character))
+			for (const character of this.#temporaryBuffer) {
+				this.emit(new CharacterToken(character))
 			}
 
-			reconsumeIn(scriptDataEscapedState)
+			this.reconsumeIn(this.scriptDataEscapedState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escape-start-state */
-	function scriptDataDoubleEscapeStartState() {
-		consume(nextInputCharacter)
+	scriptDataDoubleEscapeStartState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-			if (temporaryBuffer === 'script') {
-				switchTo(scriptDataDoubleEscapedState)
+			if (this.#temporaryBuffer === 'script') {
+				this.switchTo(this.scriptDataDoubleEscapedState)
 			} else {
-				switchTo(scriptDataEscapedState)
+				this.switchTo(this.scriptDataEscapedState)
 			}
 
-			emit(new CharacterToken(currentInputCharacter))
-		} else if (isASCIIUpperAlpha(currentInputCharacter)) {
-			temporaryBuffer += currentInputCharacter.toLowerCase()
-			emit(new CharacterToken(currentInputCharacter))
-		} else if (isASCIILowerAlpha(currentInputCharacter)) {
-			temporaryBuffer += currentInputCharacter
-			emit(new CharacterToken(currentInputCharacter))
+			this.emit(new CharacterToken(this.#currentInputCharacter))
+		} else if (isASCIIUpperAlpha(this.#currentInputCharacter)) {
+			this.#temporaryBuffer += this.#currentInputCharacter.toLowerCase()
+			this.emit(new CharacterToken(this.#currentInputCharacter))
+		} else if (isASCIILowerAlpha(this.#currentInputCharacter)) {
+			this.#temporaryBuffer += this.#currentInputCharacter
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		} else {
-			reconsumeIn(scriptDataEscapedState)
+			this.reconsumeIn(this.scriptDataEscapedState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escaped-state */
-	function scriptDataDoubleEscapedState() {
-		consume(nextInputCharacter)
+	scriptDataDoubleEscapedState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			switchTo(scriptDataDoubleEscapedDashState)
-			emit(new CharacterToken('-'))
-		} else if (currentInputCharacter === '<') {
-			switchTo(scriptDataDoubleEscapedLessThanSignState)
-			emit(new CharacterToken('<'))
-		} else if (currentInputCharacter === '\0') {
-			emit(new CharacterToken('\uFFFD'))
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '-') {
+			this.switchTo(this.scriptDataDoubleEscapedDashState)
+			this.emit(new CharacterToken('-'))
+		} else if (this.#currentInputCharacter === '<') {
+			this.switchTo(this.scriptDataDoubleEscapedLessThanSignState)
+			this.emit(new CharacterToken('<'))
+		} else if (this.#currentInputCharacter === '\0') {
+			this.emit(new CharacterToken('\uFFFD'))
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			emit(new CharacterToken(currentInputCharacter))
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escaped-dash-state */
-	function scriptDataDoubleEscapedDashState() {
-		consume(nextInputCharacter)
+	scriptDataDoubleEscapedDashState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			switchTo(scriptDataDoubleEscapedDashDashState)
-			emit(new CharacterToken('-'))
-		} else if (currentInputCharacter === '<') {
-			switchTo(scriptDataDoubleEscapedLessThanSignState)
-			emit(new CharacterToken('<'))
-		} else if (currentInputCharacter === '\0') {
-			switchTo(scriptDataState)
-			emit(new CharacterToken('\uFFFD'))
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '-') {
+			this.switchTo(this.scriptDataDoubleEscapedDashDashState)
+			this.emit(new CharacterToken('-'))
+		} else if (this.#currentInputCharacter === '<') {
+			this.switchTo(this.scriptDataDoubleEscapedLessThanSignState)
+			this.emit(new CharacterToken('<'))
+		} else if (this.#currentInputCharacter === '\0') {
+			this.switchTo(this.scriptDataState)
+			this.emit(new CharacterToken('\uFFFD'))
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			switchTo(scriptDataDoubleEscapedState)
-			emit(new CharacterToken(currentInputCharacter))
+			this.switchTo(this.scriptDataDoubleEscapedState)
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escaped-dash-dash-state */
-	function scriptDataDoubleEscapedDashDashState() {
-		consume(nextInputCharacter)
+	scriptDataDoubleEscapedDashDashState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			emit(new CharacterToken('-'))
-		} else if (currentInputCharacter === '<') {
-			switchTo(scriptDataDoubleEscapedLessThanSignState)
-			emit(new CharacterToken('<'))
-		} else if (currentInputCharacter === '>') {
-			switchTo(scriptDataState)
-			emit(new CharacterToken('>'))
-		} else if (currentInputCharacter === '\0') {
-			switchTo(scriptDataState)
-			emit(new CharacterToken('\uFFFD'))
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '-') {
+			this.emit(new CharacterToken('-'))
+		} else if (this.#currentInputCharacter === '<') {
+			this.switchTo(this.scriptDataDoubleEscapedLessThanSignState)
+			this.emit(new CharacterToken('<'))
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.scriptDataState)
+			this.emit(new CharacterToken('>'))
+		} else if (this.#currentInputCharacter === '\0') {
+			this.switchTo(this.scriptDataState)
+			this.emit(new CharacterToken('\uFFFD'))
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			switchTo(scriptDataDoubleEscapedState)
-			emit(new CharacterToken(currentInputCharacter))
+			this.switchTo(this.scriptDataDoubleEscapedState)
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escaped-less-than-sign-state */
-	function scriptDataDoubleEscapedLessThanSignState() {
-		consume(nextInputCharacter)
+	scriptDataDoubleEscapedLessThanSignState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '/') {
-			temporaryBuffer = ''
-			switchTo(scriptDataDoubleEscapeEndState)
-			emit(new CharacterToken('/'))
+		if (this.#currentInputCharacter === '/') {
+			this.#temporaryBuffer = ''
+			this.switchTo(this.scriptDataDoubleEscapeEndState)
+			this.emit(new CharacterToken('/'))
 		} else {
-			reconsumeIn(scriptDataEscapedState)
+			this.reconsumeIn(this.scriptDataEscapedState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#script-data-double-escape-end-state */
-	function scriptDataDoubleEscapeEndState() {
-		consume(nextInputCharacter)
+	scriptDataDoubleEscapeEndState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-			if (temporaryBuffer === 'script') {
-				switchTo(scriptDataEscapedState)
+			if (this.#temporaryBuffer === 'script') {
+				this.switchTo(this.scriptDataEscapedState)
 			} else {
-				switchTo(scriptDataDoubleEscapedState)
+				this.switchTo(this.scriptDataDoubleEscapedState)
 			}
 
-			emit(new CharacterToken(currentInputCharacter))
-		} else if (isASCIIUpperAlpha(currentInputCharacter)) {
-			currentToken.tagName += currentInputCharacter.toLowerCase()
-			emit(new CharacterToken(currentInputCharacter))
-		} else if (isASCIILowerAlpha(currentInputCharacter)) {
-			currentToken.tagName += currentInputCharacter
-			emit(new CharacterToken(currentInputCharacter))
+			this.emit(new CharacterToken(this.#currentInputCharacter))
+		} else if (isASCIIUpperAlpha(this.#currentInputCharacter)) {
+			this.#currentToken.tagName +=
+				this.#currentInputCharacter.toLowerCase()
+			this.emit(new CharacterToken(this.#currentInputCharacter))
+		} else if (isASCIILowerAlpha(this.#currentInputCharacter)) {
+			this.#currentToken.tagName += this.#currentInputCharacter
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		} else {
-			reconsumeIn(scriptDataDoubleEscapedState)
+			this.reconsumeIn(this.scriptDataDoubleEscapedState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#before-attribute-name-state */
-	function beforeAttributeNameState() {
-		consume(nextInputCharacter)
+	beforeAttributeNameState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
 		} else if (
-			currentInputCharacter === '/' ||
-			currentInputCharacter === '>' ||
-			isEndOfFile
+			this.#currentInputCharacter === '/' ||
+			this.#currentInputCharacter === '>' ||
+			this.#isEndOfFile
 		) {
-			reconsumeIn(afterAttributeNameState)
-		} else if (currentInputCharacter === '=') {
-			currentAttribute = new Attribute({
-				name: currentInputCharacter,
+			this.reconsumeIn(this.afterAttributeNameState)
+		} else if (this.#currentInputCharacter === '=') {
+			this.#currentAttribute = new Attribute({
+				name: this.#currentInputCharacter,
 				value: '',
 			})
 
-			currentToken.attributes.add(currentAttribute)
-			switchTo(attributeNameState)
+			this.#currentToken.attributes.add(this.#currentAttribute)
+			this.switchTo(this.attributeNameState)
 		} else {
-			currentAttribute = new Attribute({ name: '', value: '' })
-			currentToken.attributes.add(currentAttribute)
-			reconsumeIn(attributeNameState)
+			this.#currentAttribute = new Attribute({ name: '', value: '' })
+			this.#currentToken.attributes.add(this.#currentAttribute)
+			this.reconsumeIn(this.attributeNameState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#attribute-name-state */
-	function attributeNameState() {
-		consume(nextInputCharacter)
+	attributeNameState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' ' ||
-			currentInputCharacter === '/' ||
-			currentInputCharacter === '>' ||
-			isEndOfFile
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' ' ||
+			this.#currentInputCharacter === '/' ||
+			this.#currentInputCharacter === '>' ||
+			this.#isEndOfFile
 		) {
-			reconsumeIn(afterAttributeNameState)
-		} else if (currentInputCharacter === '=') {
-			switchTo(beforeAttributeValueState)
-		} else if (isASCIIAlpha(currentInputCharacter)) {
-			currentAttribute.name += currentInputCharacter.toLowerCase()
-		} else {
-			currentAttribute.name += currentInputCharacter
+			this.reconsumeIn(this.afterAttributeNameState)
+		} else if (this.#currentInputCharacter === '=') {
+			this.switchTo(this.beforeAttributeValueState)
+		} else if (isASCIIUpperAlpha(this.#currentInputCharacter)) {
+			this.#currentAttribute.name +=
+				this.#currentInputCharacter.toLowerCase()
+		} /* else if (
+			this.#currentInputCharacter === '"' ||
+			this.#currentInputCharacter === "'" ||
+			this.#currentInputCharacter === '<'
+		) {
+		} */ else {
+			this.#currentAttribute.name += this.#currentInputCharacter
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#after-attribute-name-state */
-	function afterAttributeNameState() {
-		consume(nextInputCharacter)
+	afterAttributeNameState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-		} else if (currentInputCharacter === '/') {
-			switchTo(selfClosingStartTagState)
-		} else if (currentInputCharacter === '=') {
-			switchTo(beforeAttributeValueState)
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		} else if (this.#currentInputCharacter === '/') {
+			this.switchTo(this.selfClosingStartTagState)
+		} else if (this.#currentInputCharacter === '=') {
+			this.switchTo(this.beforeAttributeValueState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			currentAttribute = new Attribute({ name: '', value: '' })
-			currentToken.attributes.add(currentAttribute)
+			this.#currentAttribute = new Attribute({ name: '', value: '' })
+			this.#currentToken.attributes.add(this.#currentAttribute)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#before-attribute-value-state */
-	function beforeAttributeValueState() {
-		consume(nextInputCharacter)
+	beforeAttributeValueState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-		} else if (currentInputCharacter === '"') {
-			switchTo(attributeValueDoubleQuotedState)
-		} else if (currentInputCharacter === "'") {
-			switchTo(attributeValueSingleQuotedState)
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
+		} else if (this.#currentInputCharacter === '"') {
+			this.switchTo(this.attributeValueDoubleQuotedState)
+		} else if (this.#currentInputCharacter === "'") {
+			this.switchTo(this.attributeValueSingleQuotedState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
 		} else {
-			reconsumeIn(attributeValueUnquotedState)
+			this.reconsumeIn(this.attributeValueUnquotedState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(double-quoted)-state */
-	function attributeValueDoubleQuotedState() {
-		consume(nextInputCharacter)
+	attributeValueDoubleQuotedState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '"') {
-			switchTo(afterAttributeValueQuotedState)
-		} else if (currentInputCharacter === '&') {
-			returnState = attributeValueDoubleQuotedState
-			switchTo(characterReferenceState)
-		} else if (currentInputCharacter === '\0') {
-			currentAttribute.value += '\uFFFD'
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '"') {
+			this.switchTo(this.afterAttributeValueQuotedState)
+		} else if (this.#currentInputCharacter === '&') {
+			this.#returnState = this.attributeValueDoubleQuotedState
+			this.switchTo(this.characterReferenceState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.#currentAttribute.value += '\uFFFD'
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			currentAttribute.value += currentInputCharacter
+			this.#currentAttribute.value += this.#currentInputCharacter
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(single-quoted)-state */
-	function attributeValueSingleQuotedState() {
-		consume(nextInputCharacter)
+	attributeValueSingleQuotedState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === "'") {
-			switchTo(afterAttributeValueQuotedState)
-		} else if (currentInputCharacter === '&') {
-			returnState = attributeValueSingleQuotedState
-			switchTo(characterReferenceState)
-		} else if (currentInputCharacter === '\0') {
-			currentAttribute.value += '\uFFFD'
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === "'") {
+			this.switchTo(this.afterAttributeValueQuotedState)
+		} else if (this.#currentInputCharacter === '&') {
+			this.#returnState = this.attributeValueSingleQuotedState
+			this.switchTo(this.characterReferenceState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.#currentAttribute.value += '\uFFFD'
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			currentAttribute.value += currentInputCharacter
+			this.#currentAttribute.value += this.#currentInputCharacter
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#attribute-value-(unquoted)-state */
-	function attributeValueUnquotedState() {
-		consume(nextInputCharacter)
+	attributeValueUnquotedState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-			switchTo(beforeAttributeNameState)
-		} else if (currentInputCharacter === '&') {
-			returnState = attributeValueUnquotedState
-			switchTo(characterReferenceState)
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
-		} else if (currentInputCharacter === '\0') {
-			currentAttribute.name += '\uFFFD'
-		} else if (currentInputCharacter === '') {
+			this.switchTo(this.beforeAttributeNameState)
+		} else if (this.#currentInputCharacter === '&') {
+			this.#returnState = this.attributeValueUnquotedState
+			this.switchTo(this.characterReferenceState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.#currentAttribute.name += '\uFFFD'
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
+		} /* else if (
+			this.#currentInputCharacter === '"' ||
+			this.#currentInputCharacter === "'" ||
+			this.#currentInputCharacter === '<' ||
+			this.#currentInputCharacter === '=' ||
+			this.#currentInputCharacter === '`'
+		) {
+		} */ else {
+			this.#currentAttribute.value += this.#currentInputCharacter
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#after-attribute-value-(quoted)-state */
-	function afterAttributeValueQuotedState() {
-		consume(nextInputCharacter)
+	afterAttributeValueQuotedState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-			switchTo(beforeAttributeNameState)
-		} else if (currentInputCharacter === '/') {
-			switchTo(selfClosingStartTagState)
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+			this.switchTo(this.beforeAttributeNameState)
+		} else if (this.#currentInputCharacter === '/') {
+			this.switchTo(this.selfClosingStartTagState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			reconsumeIn(beforeAttributeNameState)
+			this.reconsumeIn(this.beforeAttributeNameState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#self-closing-start-tag-state */
-	function selfClosingStartTagState() {
-		consume(nextInputCharacter)
+	selfClosingStartTagState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '>') {
-			currentToken.selfClosingFlag = true
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '>') {
+			this.#currentToken.selfClosingFlag = true
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			reconsumeIn(beforeAttributeNameState)
+			this.reconsumeIn(this.beforeAttributeNameState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#bogus-comment-state */
-	function bogusCommentState() {
-		consume(nextInputCharacter)
+	bogusCommentState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			emit(currentToken)
-			emit(new EndOfFileToken())
-		} else if (currentInputCharacter === '\0') {
-			currentToken.data += currentInputCharacter
+		if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
+		} else if (this.#currentInputCharacter === '\0') {
+			this.#currentToken.data += this.#currentInputCharacter
 		} else {
-			currentToken.data += currentInputCharacter
+			this.#currentToken.data += this.#currentInputCharacter
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#markup-declaration-open-state */
-	function markupDeclarationOpenState() {
-		if (nextFewCharactersAre('--')) {
-			consume('--')
-			currentToken = new CommentToken()
-			switchTo(commentStartState)
-		} else if (nextFewCharactersAre(ASCIICaseInsensitive('DOCTYPE'))) {
-			// TODO Should consume matched characters.
-			consume('DOCTYPE')
-			switchTo(DOCTYPEState)
-		} else if (nextFewCharactersAre(`[CDATA[`)) {
+	markupDeclarationOpenState() {
+		if (this.nextFewCharactersAre('--')) {
+			this.consume('--')
+			this.#currentToken = new CommentToken()
+			this.switchTo(this.commentStartState)
+		} else if (this.nextFewCharactersAre(ASCIICaseInsensitive('DOCTYPE'))) {
+			// TODO Should this.consume matched characters.
+			this.consume('DOCTYPE')
+			this.switchTo(this.DOCTYPEState)
+		} else if (this.nextFewCharactersAre(`[CDATA[`)) {
 			// TODO
-			consume('[CDATA[')
+			this.consume('[CDATA[')
 
 			if (adjustedCurrentNode) {
-				switchTo(CDATASectionState)
+				this.switchTo(this.CDATASectionState)
 			} else {
-				currentToken = new CommentToken('[CDATA[')
-				switchTo(bogusCommentState)
+				this.#currentToken = new CommentToken('[CDATA[')
+				this.switchTo(this.bogusCommentState)
 			}
 		} else {
-			currentToken = new CommentToken()
-			switchTo(bogusCommentState)
+			this.#currentToken = new CommentToken()
+			this.switchTo(this.bogusCommentState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#comment-start-state */
-	function commentStartState() {
-		consume(nextInputCharacter)
+	commentStartState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			switchTo(commentStartDashState)
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
+		if (this.#currentInputCharacter === '-') {
+			this.switchTo(this.commentStartDashState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
 		} else {
-			reconsumeIn(commentState)
+			this.reconsumeIn(this.commentState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#comment-start-dash-state */
-	function commentStartDashState() {
-		consume(nextInputCharacter)
+	commentStartDashState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			switchTo(commentEndState)
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '-') {
+			this.switchTo(this.commentEndState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.data += '-'
-			reconsumeIn(commentState)
+			this.#currentToken.data += '-'
+			this.reconsumeIn(this.commentState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#comment-state */
-	function commentState() {
-		consume(nextInputCharacter)
+	commentState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '<') {
-			currentToken.data += currentInputCharacter
-			switchTo(commentLessThanSignState)
-		} else if (currentInputCharacter === '-') {
-			switchTo(commentEndDashState)
-		} else if (currentInputCharacter === '\0') {
-			currentToken.data += '\uFFFD'
-		} else if (isEndOfFile) {
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '<') {
+			this.#currentToken.data += this.#currentInputCharacter
+			this.switchTo(this.commentLessThanSignState)
+		} else if (this.#currentInputCharacter === '-') {
+			this.switchTo(this.commentEndDashState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.#currentToken.data += '\uFFFD'
+		} else if (this.#isEndOfFile) {
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.data += currentInputCharacter
+			this.#currentToken.data += this.#currentInputCharacter
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#comment-less-than-sign-state */
-	function commentLessThanSignState() {
-		consume(nextInputCharacter)
+	commentLessThanSignState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '!') {
-			currentToken.data += currentInputCharacter
-			switchTo(commentLessThanSignBangState)
-		} else if (currentInputCharacter === '<') {
-			currentToken.data += currentInputCharacter
+		if (this.#currentInputCharacter === '!') {
+			this.#currentToken.data += this.#currentInputCharacter
+			this.switchTo(this.commentLessThanSignBangState)
+		} else if (this.#currentInputCharacter === '<') {
+			this.#currentToken.data += this.#currentInputCharacter
 		} else {
-			reconsumeIn(commentState)
+			this.reconsumeIn(this.commentState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#comment-less-than-sign-bang-state */
-	function commentLessThanSignBangState() {
-		consume(nextInputCharacter)
+	commentLessThanSignBangState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			switchTo(commentLessThanSignBangDashState)
+		if (this.#currentInputCharacter === '-') {
+			this.switchTo(this.commentLessThanSignBangDashState)
 		} else {
-			reconsumeIn(commentState)
+			this.reconsumeIn(this.commentState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#comment-less-than-sign-bang-dash-state */
-	function commentLessThanSignBangDashState() {
-		consume(nextInputCharacter)
+	commentLessThanSignBangDashState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			switchTo(commentLessThanSignBangDashDashState)
+		if (this.#currentInputCharacter === '-') {
+			this.switchTo(this.commentLessThanSignBangDashDashState)
 		} else {
-			reconsumeIn(commentState)
+			this.reconsumeIn(this.commentState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#comment-less-than-sign-bang-dash-dash-state */
-	function commentLessThanSignBangDashDashState() {
-		consume(nextInputCharacter)
+	commentLessThanSignBangDashDashState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '>' || isEndOfFile) {
-			reconsumeIn(commentEndState)
+		if (this.#currentInputCharacter === '>' || this.#isEndOfFile) {
+			this.reconsumeIn(this.commentEndState)
 		} else {
-			reconsumeIn(commentEndState)
+			this.reconsumeIn(this.commentEndState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#comment-end-dash-state */
-	function commentEndDashState() {
-		consume(nextInputCharacter)
+	commentEndDashState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			switchTo(commentEndState)
-		} else if (isEndOfFile) {
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '-') {
+			this.switchTo(this.commentEndState)
+		} else if (this.#isEndOfFile) {
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.data += '-'
-			reconsumeIn(commentState)
+			this.#currentToken.data += '-'
+			this.reconsumeIn(this.commentState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#comment-end-state */
-	function commentEndState() {
-		consume(nextInputCharacter)
+	commentEndState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (currentInputCharacter === '!') {
-			switchTo(commentEndBangState)
-		} else if (currentInputCharacter === '-') {
-			currentToken.data += '-'
-		} else if (isEndOfFile) {
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#currentInputCharacter === '!') {
+			this.switchTo(this.commentEndBangState)
+		} else if (this.#currentInputCharacter === '-') {
+			this.#currentToken.data += '-'
+		} else if (this.#isEndOfFile) {
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.data += '--'
-			reconsumeIn(commentState)
+			this.#currentToken.data += '--'
+			this.reconsumeIn(this.commentState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#comment-end-bang-state */
-	function commentEndBangState() {
-		consume(nextInputCharacter)
+	commentEndBangState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '-') {
-			currentToken.data += '-!'
-			switchTo(commentEndDashState)
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '-') {
+			this.#currentToken.data += '-!'
+			this.switchTo(this.commentEndDashState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.data += '--!'
-			reconsumeIn(commentState)
+			this.#currentToken.data += '--!'
+			this.reconsumeIn(this.commentState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#doctype-state */
-	function DOCTYPEState() {
-		consume(nextInputCharacter)
+	DOCTYPEState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-			switchTo(beforeDOCTYPENameState)
-		} else if (currentInputCharacter === '>') {
-			reconsumeIn(beforeDOCTYPENameState)
-		} else if (isEndOfFile) {
-			currentToken = new DOCTYPEToken({ forceQuirksFlag: true })
-			emit(currentToken)
-			emit(new EndOfFileToken())
+			this.switchTo(this.beforeDOCTYPENameState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.reconsumeIn(this.beforeDOCTYPENameState)
+		} else if (this.#isEndOfFile) {
+			this.#currentToken = new DOCTYPEToken({ forceQuirksFlag: true })
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			reconsumeIn(beforeDOCTYPENameState)
+			this.reconsumeIn(this.beforeDOCTYPENameState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-name-state */
-	function beforeDOCTYPENameState() {
-		consume(nextInputCharacter)
+	beforeDOCTYPENameState() {
+		this.consume(this.#nextInputCharacter)
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-		} else if (isASCIIUpperAlpha(currentInputCharacter)) {
-			currentToken = new DOCTYPEToken({
-				name: currentInputCharacter.toLowerCase(),
+		} else if (isASCIIUpperAlpha(this.#currentInputCharacter)) {
+			this.#currentToken = new DOCTYPEToken({
+				name: this.#currentInputCharacter.toLowerCase(),
 			})
 
-			switchTo(DOCTYPENameState)
-		} else if (currentInputCharacter === '\0') {
-			currentToken = new DOCTYPEToken({ name: '\uFFFD' })
-			switchTo(DOCTYPENameState)
-		} else if (currentInputCharacter === '>') {
-			currentToken = new DOCTYPEToken({
+			this.switchTo(this.DOCTYPENameState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.#currentToken = new DOCTYPEToken({ name: '\uFFFD' })
+			this.switchTo(this.DOCTYPENameState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.#currentToken = new DOCTYPEToken({
 				forceQuirks: true,
 			})
 
-			switchTo(DOCTYPENameState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			currentToken = new DOCTYPEToken({ forceQuirksFlag: true })
-			emit(currentToken)
-			emit(new EndOfFileToken())
+			this.switchTo(this.DOCTYPENameState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.#currentToken = new DOCTYPEToken({ forceQuirksFlag: true })
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken = new DOCTYPEToken({ name: currentInputCharacter })
-			switchTo(DOCTYPENameState)
+			this.#currentToken = new DOCTYPEToken({
+				name: this.#currentInputCharacter,
+			})
+			this.switchTo(this.DOCTYPENameState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#doctype-name-state */
-	function DOCTYPENameState() {
-		consume(nextInputCharacter)
+	DOCTYPENameState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-			switchTo(afterDOCTYPENameState)
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isASCIIUpperAlpha(currentInputCharacter)) {
-			currentToken.name += currentInputCharacter.toLowerCase()
-		} else if (currentInputCharacter === '\0') {
-			currentToken.name += '\uFFFD'
-		} else if (isEndOfFile) {
-			currentToken.forceQuirksFlag = true
-			emit(currentToken)
-			emit(new EndOfFileToken())
+			this.switchTo(this.afterDOCTYPENameState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (isASCIIUpperAlpha(this.#currentInputCharacter)) {
+			this.#currentToken.name += this.#currentInputCharacter.toLowerCase()
+		} else if (this.#currentInputCharacter === '\0') {
+			this.#currentToken.name += '\uFFFD'
+		} else if (this.#isEndOfFile) {
+			this.#currentToken.forceQuirksFlag = true
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.name += currentInputCharacter
+			this.#currentToken.name += this.#currentInputCharacter
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#after-doctype-name-state */
-	function afterDOCTYPENameState() {
-		consume(nextInputCharacter)
+	afterDOCTYPENameState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			currentToken.forceQuirksFlag = true
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.#currentToken.forceQuirksFlag = true
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			const sixCharactersStartingFromCurrentInputCharacter = input.slice(
-				index - 1,
-				index + 5,
-			)
+			const sixCharactersStartingFromCurrentInputCharacter =
+				this.#input.slice(this.#index - 1, this.#index + 5)
 
 			if (
 				ASCIICaseInsensitive('PUBLIC').test(
 					sixCharactersStartingFromCurrentInputCharacter,
 				)
 			) {
-				consume(sixCharactersStartingFromCurrentInputCharacter)
-				switchTo(afterDOCTYPEPublicKeywordState)
+				this.consume(sixCharactersStartingFromCurrentInputCharacter)
+				this.switchTo(this.afterDOCTYPEPublicKeywordState)
 			} else if (
 				ASCIICaseInsensitive('SYSTEM').test(
 					sixCharactersStartingFromCurrentInputCharacter,
 				)
 			) {
-				consume(sixCharactersStartingFromCurrentInputCharacter)
-				switchTo(afterDOCTYPESystemKeywordState)
+				this.consume(sixCharactersStartingFromCurrentInputCharacter)
+				this.switchTo(this.afterDOCTYPESystemKeywordState)
 			} else {
-				currentToken.forceQuirksFlag = true
-				reconsumeIn(bogusCommentState)
+				this.#currentToken.forceQuirksFlag = true
+				this.reconsumeIn(this.bogusCommentState)
 			}
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#after-doctype-public-keyword-state */
-	function afterDOCTYPEPublicKeywordState() {
-		consume(nextInputCharacter)
+	afterDOCTYPEPublicKeywordState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-			switchTo(beforeDOCTYPEPublicIdentifierState)
-		} else if (currentInputCharacter === '"') {
-			currentToken.publicIdentifier = ''
-			switchTo(DOCTYPEPublicIdentifierDoubleQuotedState)
-		} else if (currentInputCharacter === '>') {
-			currentToken.forceQuirksFlag = true
-			switchTo(dataState)
-			emit(new EndOfFileToken())
+			this.switchTo(this.beforeDOCTYPEPublicIdentifierState)
+		} else if (this.#currentInputCharacter === '"') {
+			this.#currentToken.publicIdentifier = ''
+			this.switchTo(this.DOCTYPEPublicIdentifierDoubleQuotedState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.#currentToken.forceQuirksFlag = true
+			this.switchTo(this.dataState)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.forceQuirksFlag = true
-			reconsumeIn(bogusDOCTYPEState)
+			this.#currentToken.forceQuirksFlag = true
+			this.reconsumeIn(this.bogusDOCTYPEState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-public-identifier-state */
-	function beforeDOCTYPEPublicIdentifierState() {
-		consume(nextInputCharacter)
+	beforeDOCTYPEPublicIdentifierState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-		} else if (currentInputCharacter === '"') {
-			currentToken.publicIdentifier = ''
-			switchTo(DOCTYPEPublicIdentifierDoubleQuotedState)
-		} else if (currentInputCharacter === "'") {
-			currentToken.publicIdentifier = ''
-			switchTo(DOCTYPEPublicIdentifierSingleQuotedState)
-		} else if (currentInputCharacter === '>') {
-			currentToken.forceQuirksFlag = true
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			currentToken.forceQuirksFlag = true
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		} else if (this.#currentInputCharacter === '"') {
+			this.#currentToken.publicIdentifier = ''
+			this.switchTo(this.DOCTYPEPublicIdentifierDoubleQuotedState)
+		} else if (this.#currentInputCharacter === "'") {
+			this.#currentToken.publicIdentifier = ''
+			this.switchTo(this.DOCTYPEPublicIdentifierSingleQuotedState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.#currentToken.forceQuirksFlag = true
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.#currentToken.forceQuirksFlag = true
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.forceQuirksFlag = true
-			reconsumeIn(bogusDOCTYPEState)
+			this.#currentToken.forceQuirksFlag = true
+			this.reconsumeIn(this.bogusDOCTYPEState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#doctype-public-identifier-(double-quoted)-state */
-	function DOCTYPEPublicIdentifierDoubleQuotedState() {
-		consume(nextInputCharacter)
+	DOCTYPEPublicIdentifierDoubleQuotedState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '"') {
-			switchTo(afterDOCTYPEPublicIdentifierState)
-		} else if (currentInputCharacter === '\0') {
-			currentToken.publicIdentifier += '\uFFFD'
-		} else if (currentInputCharacter === '>') {
-			currentToken.forceQuirksFlag = true
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			currentToken.forceQuirksFlag = true
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '"') {
+			this.switchTo(this.afterDOCTYPEPublicIdentifierState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.#currentToken.publicIdentifier += '\uFFFD'
+		} else if (this.#currentInputCharacter === '>') {
+			this.#currentToken.forceQuirksFlag = true
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.#currentToken.forceQuirksFlag = true
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.publicIdentifier += currentInputCharacter
+			this.#currentToken.publicIdentifier += this.#currentInputCharacter
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#doctype-public-identifier-(single-quoted)-state */
-	function DOCTYPEPublicIdentifierSingleQuotedState() {
-		consume(nextInputCharacter)
+	DOCTYPEPublicIdentifierSingleQuotedState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === "'") {
-			switchTo(afterDOCTYPEPublicIdentifierState)
-		} else if (currentInputCharacter === '\0') {
-			currentToken.publicIdentifier += '\uFFFD'
-		} else if (currentInputCharacter === '>') {
-			currentToken.forceQuirksFlag = true
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			currentToken.forceQuirksFlag = true
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === "'") {
+			this.switchTo(this.afterDOCTYPEPublicIdentifierState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.#currentToken.publicIdentifier += '\uFFFD'
+		} else if (this.#currentInputCharacter === '>') {
+			this.#currentToken.forceQuirksFlag = true
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.#currentToken.forceQuirksFlag = true
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.publicIdentifier += currentInputCharacter
+			this.#currentToken.publicIdentifier += this.#currentInputCharacter
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#after-doctype-public-identifier-state */
-	function afterDOCTYPEPublicIdentifierState() {
-		consume(nextInputCharacter)
+	afterDOCTYPEPublicIdentifierState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-			switchTo(betweenDOCTYPEPublicAndSystemIdentifierState)
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (currentInputCharacter === '"') {
-			currentToken.systemIdentifier = ''
-			switchTo(DOCTYPESystemIdentifierDoubleQuotedState)
-		} else if (currentInputCharacter === "'") {
-			currentToken.systemIdentifier = ''
-			switchTo(DOCTYPESystemIdentifierSingleQuotedState)
-		} else if (isEndOfFile) {
-			currentToken.forceQuirksFlag = true
-			emit(currentToken)
-			emit(new EndOfFileToken())
+			this.switchTo(this.betweenDOCTYPEPublicAndSystemIdentifierState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#currentInputCharacter === '"') {
+			this.#currentToken.systemIdentifier = ''
+			this.switchTo(this.DOCTYPESystemIdentifierDoubleQuotedState)
+		} else if (this.#currentInputCharacter === "'") {
+			this.#currentToken.systemIdentifier = ''
+			this.switchTo(this.DOCTYPESystemIdentifierSingleQuotedState)
+		} else if (this.#isEndOfFile) {
+			this.#currentToken.forceQuirksFlag = true
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.forceQuirksFlag = true
-			reconsumeIn(bogusDOCTYPEState)
+			this.#currentToken.forceQuirksFlag = true
+			this.reconsumeIn(this.bogusDOCTYPEState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#between-doctype-public-and-system-identifiers-state */
-	function betweenDOCTYPEPublicAndSystemIdentifierState() {
-		consume(nextInputCharacter)
+	betweenDOCTYPEPublicAndSystemIdentifierState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (currentInputCharacter === '"') {
-			currentToken.systemIdentifier = ''
-			switchTo(DOCTYPESystemIdentifierDoubleQuotedState)
-		} else if (currentInputCharacter === "'") {
-			currentToken.systemIdentifier = ''
-			switchTo(DOCTYPESystemIdentifierSingleQuotedState)
-		} else if (isEndOfFile) {
-			currentToken.forceQuirksFlag = true
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#currentInputCharacter === '"') {
+			this.#currentToken.systemIdentifier = ''
+			this.switchTo(this.DOCTYPESystemIdentifierDoubleQuotedState)
+		} else if (this.#currentInputCharacter === "'") {
+			this.#currentToken.systemIdentifier = ''
+			this.switchTo(this.DOCTYPESystemIdentifierSingleQuotedState)
+		} else if (this.#isEndOfFile) {
+			this.#currentToken.forceQuirksFlag = true
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.forceQuirksFlag = true
-			reconsumeIn(bogusDOCTYPEState)
+			this.#currentToken.forceQuirksFlag = true
+			this.reconsumeIn(this.bogusDOCTYPEState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-system-identifier-state */
-	function afterDOCTYPESystemKeywordState() {
-		consume(nextInputCharacter)
+	afterDOCTYPESystemKeywordState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-			switchTo(beforeDOCTYPESystemIdentifierState)
-		} else if (currentInputCharacter === '"') {
-			currentToken.systemIdentifier = ''
-			switchTo(DOCTYPESystemIdentifierDoubleQuotedState)
-		} else if (currentInputCharacter === '>') {
-			currentToken.forceQuirksFlag = true
-			switchTo(dataState)
-			emit(new EndOfFileToken())
+			this.switchTo(this.beforeDOCTYPESystemIdentifierState)
+		} else if (this.#currentInputCharacter === '"') {
+			this.#currentToken.systemIdentifier = ''
+			this.switchTo(this.DOCTYPESystemIdentifierDoubleQuotedState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.#currentToken.forceQuirksFlag = true
+			this.switchTo(this.dataState)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.forceQuirksFlag = true
-			reconsumeIn(bogusDOCTYPEState)
+			this.#currentToken.forceQuirksFlag = true
+			this.reconsumeIn(this.bogusDOCTYPEState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#before-doctype-system-identifier-state */
-	function beforeDOCTYPESystemIdentifierState() {
-		consume(nextInputCharacter)
+	beforeDOCTYPESystemIdentifierState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-		} else if (currentInputCharacter === '"') {
-			currentToken.systemIdentifier = ''
-			switchTo(DOCTYPESystemIdentifierDoubleQuotedState)
-		} else if (currentInputCharacter === "'") {
-			currentToken.systemIdentifier = ''
-			switchTo(DOCTYPESystemIdentifierSingleQuotedState)
-		} else if (currentInputCharacter === '>') {
-			currentToken.forceQuirksFlag = true
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			currentToken.forceQuirksFlag = true
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		} else if (this.#currentInputCharacter === '"') {
+			this.#currentToken.systemIdentifier = ''
+			this.switchTo(this.DOCTYPESystemIdentifierDoubleQuotedState)
+		} else if (this.#currentInputCharacter === "'") {
+			this.#currentToken.systemIdentifier = ''
+			this.switchTo(this.DOCTYPESystemIdentifierSingleQuotedState)
+		} else if (this.#currentInputCharacter === '>') {
+			this.#currentToken.forceQuirksFlag = true
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.#currentToken.forceQuirksFlag = true
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.forceQuirksFlag = true
-			reconsumeIn(bogusDOCTYPEState)
+			this.#currentToken.forceQuirksFlag = true
+			this.reconsumeIn(this.bogusDOCTYPEState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#doctype-system-identifier-(double-quoted)-state */
-	function DOCTYPESystemIdentifierDoubleQuotedState() {
-		consume(nextInputCharacter)
+	DOCTYPESystemIdentifierDoubleQuotedState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '"') {
-			switchTo(afterDOCTYPESystemIdentifierState)
-		} else if (currentInputCharacter === '\0') {
-			currentToken.systemIdentifier += '\uFFFD'
-		} else if (currentInputCharacter === '>') {
-			currentToken.forceQuirksFlag = true
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			currentToken.forceQuirksFlag = true
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '"') {
+			this.switchTo(this.afterDOCTYPESystemIdentifierState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.#currentToken.systemIdentifier += '\uFFFD'
+		} else if (this.#currentInputCharacter === '>') {
+			this.#currentToken.forceQuirksFlag = true
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.#currentToken.forceQuirksFlag = true
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.systemIdentifier += currentInputCharacter
+			this.#currentToken.systemIdentifier += this.#currentInputCharacter
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#doctype-system-identifier-(single-quoted)-state */
-	function DOCTYPESystemIdentifierSingleQuotedState() {
-		consume(nextInputCharacter)
+	DOCTYPESystemIdentifierSingleQuotedState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === "'") {
-			switchTo(afterDOCTYPESystemIdentifierState)
-		} else if (currentInputCharacter === '\0') {
-			currentToken.systemIdentifier += '\uFFFD'
-		} else if (currentInputCharacter === '>') {
-			currentToken.forceQuirksFlag = true
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			currentToken.forceQuirksFlag = true
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === "'") {
+			this.switchTo(this.afterDOCTYPESystemIdentifierState)
+		} else if (this.#currentInputCharacter === '\0') {
+			this.#currentToken.systemIdentifier += '\uFFFD'
+		} else if (this.#currentInputCharacter === '>') {
+			this.#currentToken.forceQuirksFlag = true
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.#currentToken.forceQuirksFlag = true
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			currentToken.systemIdentifier += currentInputCharacter
+			this.#currentToken.systemIdentifier += this.#currentInputCharacter
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#after-doctype-system-identifier-state */
-	function afterDOCTYPESystemIdentifierState() {
-		consume(nextInputCharacter)
+	afterDOCTYPESystemIdentifierState() {
+		this.consume(this.#nextInputCharacter)
 
 		if (
-			currentInputCharacter === '\t' ||
-			currentInputCharacter === '\n' ||
-			currentInputCharacter === '\f' ||
-			currentInputCharacter === ' '
+			this.#currentInputCharacter === '\t' ||
+			this.#currentInputCharacter === '\n' ||
+			this.#currentInputCharacter === '\f' ||
+			this.#currentInputCharacter === ' '
 		) {
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (isEndOfFile) {
-			currentToken.forceQuirksFlag = true
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#isEndOfFile) {
+			this.#currentToken.forceQuirksFlag = true
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
-			reconsumeIn(bogusDOCTYPEState)
+			this.reconsumeIn(this.bogusDOCTYPEState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#bogus-doctype-state */
-	function bogusDOCTYPEState() {
-		consume(nextInputCharacter)
+	bogusDOCTYPEState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === '>') {
-			switchTo(dataState)
-			emit(currentToken)
-		} else if (currentInputCharacter === '\0') {
-		} else if (isEndOfFile) {
-			emit(currentToken)
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
+			this.emit(this.#currentToken)
+		} else if (this.#currentInputCharacter === '\0') {
+		} else if (this.#isEndOfFile) {
+			this.emit(this.#currentToken)
+			this.emit(new EndOfFileToken())
 		} else {
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#cdata-section-state */
-	function CDATASectionState() {
-		consume(nextInputCharacter)
+	CDATASectionState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === ']') {
-			switchTo(CDATASectionBracketState)
-		} else if (isEndOfFile) {
-			emit(new EndOfFileToken())
+		if (this.#currentInputCharacter === ']') {
+			this.switchTo(this.CDATASectionBracketState)
+		} else if (this.#isEndOfFile) {
+			this.emit(new EndOfFileToken())
 		} else {
-			emit(new CharacterToken(currentInputCharacter))
+			this.emit(new CharacterToken(this.#currentInputCharacter))
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#cdata-section-bracket-state */
-	function CDATASectionBracketState() {
-		consume(nextInputCharacter)
+	CDATASectionBracketState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === ']') {
-			switchTo(CDATASectionEndState)
+		if (this.#currentInputCharacter === ']') {
+			this.switchTo(this.CDATASectionEndState)
 		} else {
-			emit(new CharacterToken(']'))
-			reconsumeIn(CDATASectionState)
+			this.emit(new CharacterToken(']'))
+			this.reconsumeIn(this.CDATASectionState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#cdata-section-end-state */
-	function CDATASectionEndState() {
-		consume(nextInputCharacter)
+	CDATASectionEndState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === ']') {
-			emit(new CharacterToken(']'))
-		} else if (currentInputCharacter === '>') {
-			switchTo(dataState)
+		if (this.#currentInputCharacter === ']') {
+			this.emit(new CharacterToken(']'))
+		} else if (this.#currentInputCharacter === '>') {
+			this.switchTo(this.dataState)
 		} else {
-			emit(new CharacterToken(']'))
-			emit(new CharacterToken(']'))
-			reconsumeIn(CDATASectionState)
+			this.emit(new CharacterToken(']'))
+			this.emit(new CharacterToken(']'))
+			this.reconsumeIn(this.CDATASectionState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#character-reference-state */
-	function characterReferenceState() {
-		temporaryBuffer = ''
-		temporaryBuffer += '&'
-		consume(nextInputCharacter)
+	characterReferenceState() {
+		this.#temporaryBuffer = ''
+		this.#temporaryBuffer += '&'
+		this.consume(this.#nextInputCharacter)
 
-		if (isASCIIAlphanumeric(currentInputCharacter)) {
-			reconsumeIn(namedCharacterReferenceState)
-		} else if (currentInputCharacter === '#') {
-			temporaryBuffer += currentInputCharacter
-			switchTo(numericCharacterReferenceState)
+		if (isASCIIAlphanumeric(this.#currentInputCharacter)) {
+			this.reconsumeIn(this.namedCharacterReferenceState)
+		} else if (this.#currentInputCharacter === '#') {
+			this.#temporaryBuffer += this.#currentInputCharacter
+			this.switchTo(this.numericCharacterReferenceState)
 		} else {
-			flushCodePointsConsumedAsCharacterReference()
-			reconsumeIn(returnState)
+			this.flushCodePointsConsumedAsCharacterReference()
+			this.reconsumeIn(this.#returnState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#named-character-reference-state */
-	function namedCharacterReferenceState() {
+	namedCharacterReferenceState() {
 		const maximumNumberOfCharactersPossible: keyof typeof namedCharacterReferences =
-			input.slice(index).match(NAMED_CHARACTER_REFERENCE_REGEX)?.[0] ?? ''
+			this.#input
+				.slice(this.#index)
+				.match(NEXT_NAMED_CHARACTER_REFERENCE_REGEX)?.[0] ?? ''
 
-		consume(maximumNumberOfCharactersPossible)
-		temporaryBuffer += maximumNumberOfCharactersPossible
+		this.consume(maximumNumberOfCharactersPossible)
+		this.#temporaryBuffer += maximumNumberOfCharactersPossible
 
 		if (maximumNumberOfCharactersPossible) {
 			if (
-				consumedAsPartOfAttribute &&
+				this.#consumedAsPartOfAttribute &&
 				maximumNumberOfCharactersPossible.at(-1) !== ';' &&
-				(nextInputCharacter === '=' ||
-					isASCIIAlphanumeric(nextInputCharacter))
+				(this.#nextInputCharacter === '=' ||
+					isASCIIAlphanumeric(this.#nextInputCharacter))
 			) {
-				flushCodePointsConsumedAsCharacterReference()
-				switchTo(returnState)
+				this.flushCodePointsConsumedAsCharacterReference()
+				this.switchTo(this.#returnState)
 			} else {
 				if (maximumNumberOfCharactersPossible.at(-1) === ';') {
 				}
 
-				temporaryBuffer = ''
-				temporaryBuffer +=
+				this.#temporaryBuffer = ''
+				this.#temporaryBuffer +=
 					namedCharacterReferences[maximumNumberOfCharactersPossible]
-				flushCodePointsConsumedAsCharacterReference()
-				switchTo(returnState)
+				this.flushCodePointsConsumedAsCharacterReference()
+				this.switchTo(this.#returnState)
 			}
 		} else {
-			flushCodePointsConsumedAsCharacterReference()
-			switchTo(ambiguousAmpersandState)
+			this.flushCodePointsConsumedAsCharacterReference()
+			this.switchTo(this.ambiguousAmpersandState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#ambiguous-ampersand-state */
-	function ambiguousAmpersandState() {
-		consume(nextInputCharacter)
+	ambiguousAmpersandState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (isASCIIAlphanumeric(currentInputCharacter)) {
-			if (consumedAsPartOfAttribute) {
-				currentAttribute.value += currentInputCharacter
+		if (isASCIIAlphanumeric(this.#currentInputCharacter)) {
+			if (this.#consumedAsPartOfAttribute) {
+				this.#currentAttribute.value += this.#currentInputCharacter
 			} else {
-				emit(new CharacterToken(currentInputCharacter))
+				this.emit(new CharacterToken(this.#currentInputCharacter))
 			}
-		} else if (currentInputCharacter === ';') {
-			reconsumeIn(returnState)
+		} else if (this.#currentInputCharacter === ';') {
+			this.reconsumeIn(this.#returnState)
 		} else {
-			reconsumeIn(returnState)
+			this.reconsumeIn(this.#returnState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#numeric-character-reference-state */
-	function numericCharacterReferenceState() {
-		characterReferenceCode = 0
+	numericCharacterReferenceState() {
+		this.#characterReferenceCode = 0
 
-		consume(nextInputCharacter)
+		this.consume(this.#nextInputCharacter)
 
-		if (currentInputCharacter === 'x' || currentInputCharacter === 'X') {
-			temporaryBuffer += currentInputCharacter
-			switchTo(hexadecimalCharacterReferenceStartState)
+		if (
+			this.#currentInputCharacter === 'x' ||
+			this.#currentInputCharacter === 'X'
+		) {
+			this.#temporaryBuffer += this.#currentInputCharacter
+			this.switchTo(this.hexadecimalCharacterReferenceStartState)
 		} else {
-			reconsumeIn(decimalCharacterReferenceStartState)
+			this.reconsumeIn(this.decimalCharacterReferenceStartState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#hexadecimal-character-reference-start-state */
-	function hexadecimalCharacterReferenceStartState() {
-		consume(nextInputCharacter)
+	hexadecimalCharacterReferenceStartState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (isASCIIHexDigit(currentInputCharacter)) {
-			reconsumeIn(hexadecimalCharacterReferenceState)
+		if (isASCIIHexDigit(this.#currentInputCharacter)) {
+			this.reconsumeIn(this.hexadecimalCharacterReferenceState)
 		} else {
-			flushCodePointsConsumedAsCharacterReference()
-			reconsumeIn(returnState)
+			this.flushCodePointsConsumedAsCharacterReference()
+			this.reconsumeIn(this.#returnState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#decimal-character-reference-start-state */
-	function decimalCharacterReferenceStartState() {
-		consume(nextInputCharacter)
+	decimalCharacterReferenceStartState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (isASCIIDigit(currentInputCharacter)) {
-			reconsumeIn(decimalCharacterReferenceState)
+		if (isASCIIDigit(this.#currentInputCharacter)) {
+			this.reconsumeIn(this.decimalCharacterReferenceState)
 		} else {
-			flushCodePointsConsumedAsCharacterReference()
-			reconsumeIn(returnState)
+			this.flushCodePointsConsumedAsCharacterReference()
+			this.reconsumeIn(this.#returnState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#hexadecimal-character-reference-state */
-	function hexadecimalCharacterReferenceState() {
-		consume(nextInputCharacter)
+	hexadecimalCharacterReferenceState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (isASCIIDigit(currentInputCharacter)) {
-			characterReferenceCode *= 16
-			characterReferenceCode +=
-				currentInputCharacter.charCodeAt(0) - 0x0030
-		} else if (isASCIIUpperHexDigit(currentInputCharacter)) {
-			characterReferenceCode *= 16
-			characterReferenceCode +=
-				currentInputCharacter.charCodeAt(0) - 0x0037
-		} else if (isASCIILowerHexDigit(currentInputCharacter)) {
-			characterReferenceCode *= 16
-			characterReferenceCode +=
-				currentInputCharacter.charCodeAt(0) - 0x0057
-		} else if (currentInputCharacter === ';') {
-			switchTo(numericCharacterReferenceEndState)
+		if (isASCIIDigit(this.#currentInputCharacter)) {
+			this.#characterReferenceCode *= 16
+			this.#characterReferenceCode +=
+				this.#currentInputCharacter.charCodeAt(0) - 0x0030
+		} else if (isASCIIUpperHexDigit(this.#currentInputCharacter)) {
+			this.#characterReferenceCode *= 16
+			this.#characterReferenceCode +=
+				this.#currentInputCharacter.charCodeAt(0) - 0x0037
+		} else if (isASCIILowerHexDigit(this.#currentInputCharacter)) {
+			this.#characterReferenceCode *= 16
+			this.#characterReferenceCode +=
+				this.#currentInputCharacter.charCodeAt(0) - 0x0057
+		} else if (this.#currentInputCharacter === ';') {
+			this.switchTo(this.numericCharacterReferenceEndState)
 		} else {
-			reconsumeIn(numericCharacterReferenceEndState)
+			this.reconsumeIn(this.numericCharacterReferenceEndState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#decimal-character-reference-state */
-	function decimalCharacterReferenceState() {
-		consume(nextInputCharacter)
+	decimalCharacterReferenceState() {
+		this.consume(this.#nextInputCharacter)
 
-		if (isASCIIDigit(currentInputCharacter)) {
-			characterReferenceCode *= 10
-			characterReferenceCode +=
-				currentInputCharacter.charCodeAt(0) - 0x0030
-		} else if (currentInputCharacter === ';') {
-			switchTo(numericCharacterReferenceEndState)
+		if (isASCIIDigit(this.#currentInputCharacter)) {
+			this.#characterReferenceCode *= 10
+			this.#characterReferenceCode +=
+				this.#currentInputCharacter.charCodeAt(0) - 0x0030
+		} else if (this.#currentInputCharacter === ';') {
+			this.switchTo(this.numericCharacterReferenceEndState)
 		} else {
-			reconsumeIn(numericCharacterReferenceEndState)
+			this.reconsumeIn(this.numericCharacterReferenceEndState)
 		}
 	}
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#numeric-character-reference-end-state */
-	function numericCharacterReferenceEndState() {
-		if (characterReferenceCode === 0x00) {
-			characterReferenceCode = 0xfffd
-		} else if (characterReferenceCode > 0x10ffff) {
-			characterReferenceCode = 0xfffd
-		} else if (isSurrogate(characterReferenceCode)) {
-			characterReferenceCode = 0xfffd
-		} else if (isNoncharacter(characterReferenceCode)) {
+	numericCharacterReferenceEndState() {
+		if (this.#characterReferenceCode === 0x00) {
+			this.#characterReferenceCode = 0xfffd
+		} else if (this.#characterReferenceCode > 0x10ffff) {
+			this.#characterReferenceCode = 0xfffd
+		} else if (isSurrogate(this.#characterReferenceCode)) {
+			this.#characterReferenceCode = 0xfffd
+		} else if (isNoncharacter(this.#characterReferenceCode)) {
 		} else if (
-			characterReferenceCode === 0x0d ||
-			(isControl(characterReferenceCode) &&
-				!isASCIIWhitespace(characterReferenceCode))
+			this.#characterReferenceCode === 0x0d ||
+			(isControl(this.#characterReferenceCode) &&
+				!isASCIIWhitespace(this.#characterReferenceCode))
 		) {
 		}
 
-		const table = new Map({
+		const table = {
 			0x80: 0x20ac,
 			0x82: 0x201a,
 			0x83: 0x0192,
@@ -1790,35 +1822,22 @@ export function tokenize(input: string) {
 			0x9c: 0x0153,
 			0x9e: 0x017e,
 			0x9f: 0x0178,
-		})
+		} as const
 
-		if (table.has(characterReferenceCode)) {
-			characterReferenceCode = table.get(characterReferenceCode)
-		}
+		this.#characterReferenceCode =
+			table[this.#characterReferenceCode] ?? this.#characterReferenceCode
 
-		temporaryBuffer = ''
-		temporaryBuffer += String.fromCodePoint(characterReferenceCode)
-		flushCodePointsConsumedAsCharacterReference()
-		switchTo(returnState)
+		this.#temporaryBuffer = ''
+		this.#temporaryBuffer += String.fromCodePoint(
+			this.#characterReferenceCode,
+		)
+		this.flushCodePointsConsumedAsCharacterReference()
+		this.switchTo(this.#returnState)
 	}
 
-	const initialState = dataState
-	state = initialState
-
-	while (!isEndOfFile) {
-		state()
+	tokenize() {
+		while (!this.#isEndOfFile) {
+			this.#state()
+		}
 	}
 }
-
-tokenize(
-	String.raw`<!DOCTYPE html>
-<html lang="en">
-	<!-- Look a comment -->
-
-	<br/> <-- Self closing!
-
-	<p>&amp</p>
-
-	&amp
-</html>`,
-)
