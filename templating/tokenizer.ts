@@ -31,6 +31,36 @@ const NEXT_NAMED_CHARACTER_REFERENCE_REGEX = new RegExp(
 	`^(?:${Object.keys(namedCharacterReferences).join('|')})`,
 )
 
+const FOLLOWING_TABLE = {
+	0x80: 0x20ac,
+	0x82: 0x201a,
+	0x83: 0x0192,
+	0x84: 0x201e,
+	0x85: 0x2026,
+	0x86: 0x2020,
+	0x87: 0x2021,
+	0x88: 0x02c6,
+	0x89: 0x2030,
+	0x8a: 0x0160,
+	0x8b: 0x2039,
+	0x8c: 0x0152,
+	0x8e: 0x017d,
+	0x91: 0x2018,
+	0x92: 0x2019,
+	0x93: 0x201c,
+	0x94: 0x201d,
+	0x95: 0x2022,
+	0x96: 0x2013,
+	0x97: 0x2014,
+	0x98: 0x02dc,
+	0x99: 0x2122,
+	0x9a: 0x0161,
+	0x9b: 0x203a,
+	0x9c: 0x0153,
+	0x9e: 0x017e,
+	0x9f: 0x0178,
+} as const
+
 /** https://html.spec.whatwg.org/multipage/parsing.html#tokenization */
 export class Tokenizer {
 	#input: string
@@ -296,7 +326,7 @@ export class Tokenizer {
 			this.#temporaryBuffer = ''
 			this.switchTo(this.RCDATAEndTagOpenState)
 		} else {
-			this.emit(new CharacterToken('\u003C'))
+			this.emit(new CharacterToken('<'))
 			this.reconsumeIn(this.RCDATAState)
 		}
 	}
@@ -324,17 +354,17 @@ export class Tokenizer {
 				this.#currentInputCharacter === '\n' ||
 				this.#currentInputCharacter === '\f' ||
 				this.#currentInputCharacter === ' ') &&
-			this.isAppropriateEndTagToken(this.#currentToken)
+			this.isAppropriateEndTagToken(this.#currentToken as EndTagToken)
 		) {
 			this.switchTo(this.beforeAttributeNameState)
 		} else if (
 			this.#currentInputCharacter == '/' &&
-			this.isAppropriateEndTagToken(this.#currentToken)
+			this.isAppropriateEndTagToken(this.#currentToken as EndTagToken)
 		) {
 			this.switchTo(this.selfClosingStartTagState)
 		} else if (
 			this.#currentInputCharacter === '>' &&
-			this.isAppropriateEndTagToken(this.#currentToken)
+			this.isAppropriateEndTagToken(this.#currentToken as EndTagToken)
 		) {
 			this.switchTo(this.dataState)
 			this.emit(this.#currentToken)
@@ -393,17 +423,17 @@ export class Tokenizer {
 				this.#currentInputCharacter === '\n' ||
 				this.#currentInputCharacter === '\f' ||
 				this.#currentInputCharacter === ' ') &&
-			this.isAppropriateEndTagToken(this.#currentToken)
+			this.isAppropriateEndTagToken(this.#currentToken as EndTagToken)
 		) {
 			this.switchTo(this.beforeAttributeNameState)
 		} else if (
 			this.#currentInputCharacter === '/' &&
-			this.isAppropriateEndTagToken(this.#currentToken)
+			this.isAppropriateEndTagToken(this.#currentToken as EndTagToken)
 		) {
 			this.switchTo(this.selfClosingStartTagState)
 		} else if (
 			this.#currentInputCharacter === '>' &&
-			this.isAppropriateEndTagToken(this.#currentToken)
+			this.isAppropriateEndTagToken(this.#currentToken as EndTagToken)
 		) {
 			this.switchTo(this.dataState)
 		} else if (isASCIIUpperAlpha(this.#currentInputCharacter)) {
@@ -465,12 +495,12 @@ export class Tokenizer {
 				this.#currentInputCharacter === '\n' ||
 				this.#currentInputCharacter === '\f' ||
 				this.#currentInputCharacter === ' ') &&
-			this.isAppropriateEndTagToken(this.#currentToken)
+			this.isAppropriateEndTagToken(this.#currentToken as EndTagToken)
 		) {
 			this.switchTo(this.beforeAttributeNameState)
 		} else if (
 			this.#currentInputCharacter === '/' &&
-			this.isAppropriateEndTagToken(this.#currentToken)
+			this.isAppropriateEndTagToken(this.#currentToken as EndTagToken)
 		) {
 			this.switchTo(this.selfClosingStartTagState)
 		}
@@ -599,17 +629,17 @@ export class Tokenizer {
 				this.#currentInputCharacter === '\n' ||
 				this.#currentInputCharacter === '\f' ||
 				this.#currentInputCharacter === ' ') &&
-			this.isAppropriateEndTagToken(this.#currentToken)
+			this.isAppropriateEndTagToken(this.#currentToken as EndTagToken)
 		) {
 			this.switchTo(this.beforeAttributeNameState)
 		} else if (
 			this.#currentInputCharacter === '/' &&
-			this.isAppropriateEndTagToken(this.#currentToken)
+			this.isAppropriateEndTagToken(this.#currentToken as EndTagToken)
 		) {
 			this.switchTo(this.selfClosingStartTagState)
 		} else if (
 			this.#currentInputCharacter === '>' &&
-			this.isAppropriateEndTagToken(this.#currentToken)
+			this.isAppropriateEndTagToken(this.#currentToken as EndTagToken)
 		) {
 			this.switchTo(this.dataState)
 			this.emit(this.#currentToken)
@@ -774,6 +804,7 @@ export class Tokenizer {
 			this.#currentInputCharacter === '\n' ||
 			this.#currentInputCharacter === '\f' ||
 			this.#currentInputCharacter === ' '
+			// deno-lint-ignore no-empty
 		) {
 		} else if (
 			this.#currentInputCharacter === '/' ||
@@ -815,12 +846,13 @@ export class Tokenizer {
 		} else if (isASCIIUpperAlpha(this.#currentInputCharacter)) {
 			this.#currentAttribute.name +=
 				this.#currentInputCharacter.toLowerCase()
-		} /* else if (
+		} else if (
 			this.#currentInputCharacter === '"' ||
 			this.#currentInputCharacter === "'" ||
 			this.#currentInputCharacter === '<'
+			// deno-lint-ignore no-empty
 		) {
-		} */ else {
+		} else {
 			this.#currentAttribute.name += this.#currentInputCharacter
 		}
 	}
@@ -834,6 +866,7 @@ export class Tokenizer {
 			this.#currentInputCharacter === '\n' ||
 			this.#currentInputCharacter === '\f' ||
 			this.#currentInputCharacter === ' '
+			// deno-lint-ignore no-empty
 		) {
 		} else if (this.#currentInputCharacter === '/') {
 			this.switchTo(this.selfClosingStartTagState)
@@ -859,6 +892,7 @@ export class Tokenizer {
 			this.#currentInputCharacter === '\n' ||
 			this.#currentInputCharacter === '\f' ||
 			this.#currentInputCharacter === ' '
+			// deno-lint-ignore no-empty
 		) {
 		} else if (this.#currentInputCharacter === '"') {
 			this.switchTo(this.attributeValueDoubleQuotedState)
@@ -929,14 +963,15 @@ export class Tokenizer {
 			this.#currentAttribute.name += '\uFFFD'
 		} else if (this.#isEndOfFile) {
 			this.emit(new EndOfFileToken())
-		} /* else if (
+		} else if (
 			this.#currentInputCharacter === '"' ||
 			this.#currentInputCharacter === "'" ||
 			this.#currentInputCharacter === '<' ||
 			this.#currentInputCharacter === '=' ||
 			this.#currentInputCharacter === '`'
+			// deno-lint-ignore no-empty
 		) {
-		} */ else {
+		} else {
 			this.#currentAttribute.value += this.#currentInputCharacter
 		}
 	}
@@ -1003,13 +1038,13 @@ export class Tokenizer {
 			this.#currentToken = new CommentToken()
 			this.switchTo(this.commentStartState)
 		} else if (this.nextFewCharactersAre(ASCIICaseInsensitive('DOCTYPE'))) {
-			// TODO Should this.consume matched characters.
+			// TODO Should this consume matched characters?
 			this.consume('DOCTYPE')
 			this.switchTo(this.DOCTYPEState)
 		} else if (this.nextFewCharactersAre(`[CDATA[`)) {
-			// TODO
 			this.consume('[CDATA[')
 
+			// @ts-expect-error Not implemented
 			if (adjustedCurrentNode) {
 				this.switchTo(this.CDATASectionState)
 			} else {
@@ -1204,6 +1239,7 @@ export class Tokenizer {
 			this.#currentInputCharacter === '\n' ||
 			this.#currentInputCharacter === '\f' ||
 			this.#currentInputCharacter === ' '
+			// deno-lint-ignore no-empty
 		) {
 		} else if (isASCIIUpperAlpha(this.#currentInputCharacter)) {
 			this.#currentToken = new DOCTYPEToken({
@@ -1216,7 +1252,7 @@ export class Tokenizer {
 			this.switchTo(this.DOCTYPENameState)
 		} else if (this.#currentInputCharacter === '>') {
 			this.#currentToken = new DOCTYPEToken({
-				forceQuirks: true,
+				forceQuirksFlag: true,
 			})
 
 			this.switchTo(this.DOCTYPENameState)
@@ -1229,6 +1265,7 @@ export class Tokenizer {
 			this.#currentToken = new DOCTYPEToken({
 				name: this.#currentInputCharacter,
 			})
+
 			this.switchTo(this.DOCTYPENameState)
 		}
 	}
@@ -1269,6 +1306,7 @@ export class Tokenizer {
 			this.#currentInputCharacter === '\n' ||
 			this.#currentInputCharacter === '\f' ||
 			this.#currentInputCharacter === ' '
+			// deno-lint-ignore no-empty
 		) {
 		} else if (this.#currentInputCharacter === '>') {
 			this.switchTo(this.dataState)
@@ -1335,6 +1373,7 @@ export class Tokenizer {
 			this.#currentInputCharacter === '\n' ||
 			this.#currentInputCharacter === '\f' ||
 			this.#currentInputCharacter === ' '
+			// deno-lint-ignore no-empty
 		) {
 		} else if (this.#currentInputCharacter === '"') {
 			this.#currentToken.publicIdentifier = ''
@@ -1437,6 +1476,7 @@ export class Tokenizer {
 			this.#currentInputCharacter === '\n' ||
 			this.#currentInputCharacter === '\f' ||
 			this.#currentInputCharacter === ' '
+			// deno-lint-ignore no-empty
 		) {
 		} else if (this.#currentInputCharacter === '>') {
 			this.switchTo(this.dataState)
@@ -1490,6 +1530,7 @@ export class Tokenizer {
 			this.#currentInputCharacter === '\n' ||
 			this.#currentInputCharacter === '\f' ||
 			this.#currentInputCharacter === ' '
+			// deno-lint-ignore no-empty
 		) {
 		} else if (this.#currentInputCharacter === '"') {
 			this.#currentToken.systemIdentifier = ''
@@ -1562,6 +1603,7 @@ export class Tokenizer {
 			this.#currentInputCharacter === '\n' ||
 			this.#currentInputCharacter === '\f' ||
 			this.#currentInputCharacter === ' '
+			// deno-lint-ignore no-empty
 		) {
 		} else if (this.#currentInputCharacter === '>') {
 			this.switchTo(this.dataState)
@@ -1582,10 +1624,12 @@ export class Tokenizer {
 		if (this.#currentInputCharacter === '>') {
 			this.switchTo(this.dataState)
 			this.emit(this.#currentToken)
+			// deno-lint-ignore no-empty
 		} else if (this.#currentInputCharacter === '\0') {
 		} else if (this.#isEndOfFile) {
 			this.emit(this.#currentToken)
 			this.emit(new EndOfFileToken())
+			// deno-lint-ignore no-empty
 		} else {
 		}
 	}
@@ -1649,10 +1693,11 @@ export class Tokenizer {
 
 	/** https://html.spec.whatwg.org/multipage/parsing.html#named-character-reference-state */
 	namedCharacterReferenceState() {
-		const maximumNumberOfCharactersPossible: keyof typeof namedCharacterReferences =
-			this.#input
-				.slice(this.#index)
-				.match(NEXT_NAMED_CHARACTER_REFERENCE_REGEX)?.[0] ?? ''
+		const maximumNumberOfCharactersPossible = (this.#input
+			.slice(this.#index)
+			.match(NEXT_NAMED_CHARACTER_REFERENCE_REGEX)?.[0] ?? '') as
+			| keyof typeof namedCharacterReferences
+			| ''
 
 		this.consume(maximumNumberOfCharactersPossible)
 		this.#temporaryBuffer += maximumNumberOfCharactersPossible
@@ -1667,6 +1712,7 @@ export class Tokenizer {
 				this.flushCodePointsConsumedAsCharacterReference()
 				this.switchTo(this.#returnState)
 			} else {
+				// deno-lint-ignore no-empty
 				if (maximumNumberOfCharactersPossible.at(-1) === ';') {
 				}
 
@@ -1702,7 +1748,6 @@ export class Tokenizer {
 	/** https://html.spec.whatwg.org/multipage/parsing.html#numeric-character-reference-state */
 	numericCharacterReferenceState() {
 		this.#characterReferenceCode = 0
-
 		this.consume(this.#nextInputCharacter)
 
 		if (
@@ -1786,51 +1831,25 @@ export class Tokenizer {
 			this.#characterReferenceCode = 0xfffd
 		} else if (isSurrogate(this.#characterReferenceCode)) {
 			this.#characterReferenceCode = 0xfffd
+			// deno-lint-ignore no-empty
 		} else if (isNoncharacter(this.#characterReferenceCode)) {
 		} else if (
 			this.#characterReferenceCode === 0x0d ||
 			(isControl(this.#characterReferenceCode) &&
 				!isASCIIWhitespace(this.#characterReferenceCode))
 		) {
+			this.#characterReferenceCode =
+				FOLLOWING_TABLE[
+					this.#characterReferenceCode as keyof typeof FOLLOWING_TABLE
+				] ?? this.#characterReferenceCode
 		}
 
-		const table = {
-			0x80: 0x20ac,
-			0x82: 0x201a,
-			0x83: 0x0192,
-			0x84: 0x201e,
-			0x85: 0x2026,
-			0x86: 0x2020,
-			0x87: 0x2021,
-			0x88: 0x02c6,
-			0x89: 0x2030,
-			0x8a: 0x0160,
-			0x8b: 0x2039,
-			0x8c: 0x0152,
-			0x8e: 0x017d,
-			0x91: 0x2018,
-			0x92: 0x2019,
-			0x93: 0x201c,
-			0x94: 0x201d,
-			0x95: 0x2022,
-			0x96: 0x2013,
-			0x97: 0x2014,
-			0x98: 0x02dc,
-			0x99: 0x2122,
-			0x9a: 0x0161,
-			0x9b: 0x203a,
-			0x9c: 0x0153,
-			0x9e: 0x017e,
-			0x9f: 0x0178,
-		} as const
-
-		this.#characterReferenceCode =
-			table[this.#characterReferenceCode] ?? this.#characterReferenceCode
-
 		this.#temporaryBuffer = ''
+
 		this.#temporaryBuffer += String.fromCodePoint(
 			this.#characterReferenceCode,
 		)
+
 		this.flushCodePointsConsumedAsCharacterReference()
 		this.switchTo(this.#returnState)
 	}

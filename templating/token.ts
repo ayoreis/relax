@@ -1,10 +1,5 @@
-export type Token =
-	| DOCTYPEToken
-	| StartTagToken
-	| EndTagToken
-	| CommentToken
-	| CharacterToken
-	| EndOfFileToken
+// TODO How to narrow this down?
+export type Token = Record<string, any>
 
 // https://github.com/Microsoft/TypeScript/issues/5326
 export class Attribute {
