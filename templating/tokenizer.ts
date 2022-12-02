@@ -27,6 +27,10 @@ import namedCharacterReferences from './named-character-references.json' assert 
 
 type State = () => void
 
+const NAMED_CHARACTER_REFERENCE_REGEX = new RegExp(
+	`^(?:${Object.keys(namedCharacterReferences).join('|')})`,
+)
+
 /** https://html.spec.whatwg.org/multipage/parsing.html#tokenization */
 export function tokenize(input: string) {
 	let index = 0
@@ -1619,11 +1623,7 @@ export function tokenize(input: string) {
 	/** https://html.spec.whatwg.org/multipage/parsing.html#named-character-reference-state */
 	function namedCharacterReferenceState() {
 		const maximumNumberOfCharactersPossible: keyof typeof namedCharacterReferences =
-			nextFewCharacters.match(
-				`${new RegExp(
-					Object.keys(namedCharacterReferences).join('|'),
-				)}|`,
-			)?.[0] ?? ''
+			input.slice(index).match(NAMED_CHARACTER_REFERENCE_REGEX)?.[0] ?? ''
 
 		consume(maximumNumberOfCharactersPossible)
 		temporaryBuffer += maximumNumberOfCharactersPossible
@@ -1817,8 +1817,8 @@ tokenize(
 
 	<br/> <-- Self closing!
 
-	<p>&Amp</p>
+	<p>&amp</p>
 
-	&Amp
+	&amp
 </html>`,
 )
