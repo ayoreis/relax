@@ -1,4 +1,5 @@
-// TODO How to narrow this down?
+// TODO Narrow this
+// deno-lint-ignore no-explicit-any
 export type Token = Record<string, any>
 
 // https://github.com/Microsoft/TypeScript/issues/5326

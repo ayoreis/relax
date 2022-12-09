@@ -1,3 +1,4 @@
+// https://infra.spec.whatwg.org
 /** https://infra.spec.whatwg.org/#code-point */
 export type CodePoint = string | number
 
@@ -28,6 +29,7 @@ export function isASCIIWhitespace(codePoint: CodePoint) {
 
 /** https://infra.spec.whatwg.org/#c0-control */
 export function isC0Control(codePoint: CodePoint) {
+	// deno-lint-ignore no-control-regex
 	return /^[\u0000-\u001F]$/.test(codePoint.toString())
 }
 

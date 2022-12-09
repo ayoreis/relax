@@ -1,4 +1,4 @@
-import type { Token } from './token.ts'
+import type { Token } from './_token.ts'
 import {
 	Attribute,
 	DOCTYPEToken,
@@ -7,7 +7,7 @@ import {
 	CommentToken,
 	CharacterToken,
 	EndOfFileToken,
-} from './token.ts'
+} from './_token.ts'
 import {
 	isSurrogate,
 	isNoncharacter,
@@ -22,8 +22,8 @@ import {
 	isASCIIAlpha,
 	isASCIIAlphanumeric,
 	ASCIICaseInsensitive,
-} from './code-points.ts'
-import namedCharacterReferences from './named-character-references.json' assert { type: 'json' }
+} from './_infra.ts'
+import namedCharacterReferences from './_named-character-references.json' assert { type: 'json' }
 
 type State = () => void
 
@@ -84,6 +84,7 @@ export class Tokenizer {
 	#consumedAsPartOfAttribute!: boolean
 	/** https://html.spec.whatwg.org/multipage/parsing.html#character-reference-code */
 	#characterReferenceCode!: number
+	#emitionQueue = new Set<Token>()
 
 	constructor(input: string) {
 		this.#input = input
@@ -137,7 +138,7 @@ export class Tokenizer {
 			this.#lastEmitedStartTagToken = token
 		}
 
-		console.log(token)
+		this.#emitionQueue.add(token)
 	}
 
 	switchTo(newState: State) {
@@ -1854,9 +1855,17 @@ export class Tokenizer {
 		this.switchTo(this.#returnState)
 	}
 
-	tokenize() {
+	*tokenize(): Generator<Token, void, void> {
 		while (!this.#isEndOfFile) {
+			for (const emition of this.#emitionQueue) {
+				yield emition
+			}
+
+			this.#emitionQueue.clear()
+
 			this.#state()
 		}
+
+		return
 	}
 }
