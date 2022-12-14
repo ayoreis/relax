@@ -16,18 +16,14 @@ const SWC_PRINT_OPTIONS: SWCTypes.Config = {}
 
 const span: SWCTypes.Span = { start: 0, end: 0, ctxt: 0 }
 
-let accumulatedSpan = 0
-
 /**
  * https://github.com/swc-project/swc/issues/1366
  * https://github.com/littledivy/deno_swc/issues/39
  */
-export function normalizeSpan(span: SWCTypes.Span): SWCTypes.Span {
-	return {
-		start: span.start - accumulatedSpan,
-		end: span.end - accumulatedSpan,
-		ctxt: span.ctxt,
-	}
+let accumulatedSpan = 0
+
+export function getAccumulatedSpan() {
+	return accumulatedSpan
 }
 
 export function createModule(): SWCTypes.Module {
