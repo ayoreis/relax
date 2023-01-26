@@ -1,42 +1,37 @@
-<h1 align="center">Relax</h1>
-<h6 align="center">For making websites</h6>
-<p align="center">~~~~~~~</p>
+# Relax
 
-I'm working on a [`Request`](https://developer.mozilla.org/en-US/docs/Web/API/Request)–[`Response`](https://developer.mozilla.org/en-US/docs/Web/API/Response)-router.
+For making Websites
 
-```ts
-import { Router } from 'relax'
+## Routing
 
-const router = new Router()
+WIP
 
-router.get('/', () => {
-	return new Response('Home')
-})
+## Componets
 
-router.get('*', () => {
-	return new Response('404')
-})
+WIP `.relax` files
 
-Deno.serve(router.fetch)
+## Templating
+
+WIP
+
+## Reactivity
+
+React vs Vue.js vs Svelte
+
+## Data (resumability?)
+
+Ideas?
+
+## Formatting
+
+<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd>
+
+`> TypeScript: Sort imports`
+
+```sh
+deno fmt
 ```
 
-[`[Check out the code!]`](/router/router.ts)
+## Licence
 
-And on a HTML Parser that uses [Template literals](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Template_literals) and keeps element references.
-
-```ts
-const name = template`<span>🐶 Dog</span>`
-const greeting = template`<h1>Hi ${name}! Welcome to Relax.</h1>`
-
-name.textContent = '😸 Cat'
-
-console.log(greeting) // <h1>Hi <span>😸 Cat</span>! Welcome to Relax.</h1>
-```
-
-It's not ready yet but the code's at [/templating](/templating).
-
-Check out [ayoreis.com](../../../ayoreis.com) for a simple website using Relax!
-
----
-
-_Made by [Ayo](//ayoreis.com) with 💖._
+MIT
