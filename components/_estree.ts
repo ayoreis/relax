@@ -37,7 +37,10 @@ export function createModule(): SWCTypes.Module {
 }
 
 export function parse(source: string) {
-	const parsed = SWC.parse(source, SWC_PARSE_OPTIONS)
+	const parsed = SWC.parse(
+		source,
+		SWC_PARSE_OPTIONS,
+	) as SWCTypes.Module
 
 	accumulatedSpan = parsed.span.end
 
