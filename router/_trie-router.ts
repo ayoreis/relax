@@ -1,59 +1,78 @@
-/*
-    Todo:
-    -   Several handlers
-*/
+type KeyOfMap<TheMap extends Map<unknown, unknown>> =
+	TheMap extends Map<infer Key, unknown> ? Key : never
+
+type ValueOfMap<TheMap extends Map<unknown, unknown>> =
+	TheMap extends Map<unknown, infer Value> ? Value : never
 
 type Handler = unknown
-type IndexType = string | number | symbol
-
-interface Routes {
-	[key: string]: Routes
-	[key: symbol]: Handler
-}
-
-function ensureKey(
-	object: Record<IndexType, unknown>,
-	key: IndexType,
-	value: unknown,
-) {
-	if (object[key]) return
-
-	object[key] = value
-}
+type Route = Map<URLPattern | symbol, Route | Handler>
 
 const OWN_HANDLER_KEY = Symbol('Own handler key')
 
+function ensureMapKey<
+	TheMap extends Map<unknown, unknown>,
+>(
+	map: TheMap,
+	key: KeyOfMap<TheMap>,
+	value: ValueOfMap<TheMap>,
+) {
+	if (map.has(key)) return
+
+	map.set(key, value)
+}
+
 class TrieRouter {
-	#routes: Routes = {}
+	#routes: Route = new Map()
 
 	add(pathname: string, handler: Handler) {
-		const parts = pathname.split('/')
+		const directoriesNames = pathname.split('/')
 
-		let currentPart = this.#routes
+		let currentRoute = this.#routes
 
-		for (const part of parts) {
-			ensureKey(currentPart, part, {})
+		for (const directoriesName of directoriesNames) {
+			const urlPattern = new URLPattern({
+				pathname: directoriesName,
+			})
 
-			currentPart = currentPart[part]
+			ensureMapKey(
+				currentRoute,
+				urlPattern,
+				new Map(),
+			)
+
+			currentRoute = currentRoute.get(urlPattern) as Route
 		}
 
-		currentPart[OWN_HANDLER_KEY] = handler
+		currentRoute.set(OWN_HANDLER_KEY, handler)
 	}
 
 	fetch(pathname: string) {
-		const parts = pathname.split('/')
+		const directoriesNames = pathname.split('/')
 
-		let currentPart = this.#routes
+		let currentRoute = this.#routes
 
-		for (const part of parts) {
-			currentPart = currentPart[part]
+		for (const directoryName of directoriesNames) {
+			for (
+				const [urlPattern, route] of currentRoute as Map<
+					URLPattern,
+					Route
+				>
+			) {
+				if (!urlPattern.test({ pathname: directoryName })) {
+					continue
+				}
+
+				currentRoute = route
+
+				break
+			}
 		}
 
-		return currentPart[OWN_HANDLER_KEY]
+		return currentRoute.get(OWN_HANDLER_KEY)
 	}
 }
 
 const trieRouter = new TrieRouter()
 
-trieRouter.add('/settings/password/reset', 'Handler')
+trieRouter.add('/', 'Handler sjsjsj')
 console.log(trieRouter.fetch('/settings/password/reset'))

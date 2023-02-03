@@ -12,13 +12,16 @@ interface CodeFenceMatchGroups {
 	type: '`' | '~'
 }
 
-const CODE_FENCE =
-	/(?<=^|\n)(?<indentation> {0,3})(?<quantity>(?<type>[`~])\k<type>{2,})[ \t]*(?<infoString>(?!\k<type>)(?:.*?))[ \t]\n(?:(?<content>.*?))?(?:\n(?:\k<quantity>\k<type>*)|$)/gs
+/** https://spec.commonmark.org/0.30/#fenced-code-blocks */
+const FENCED_CODE_BLOCK =
+	/(?<=^|\n)(?<indentation> {0,3})(?<quantity>(?<type>[`~])\k<type>{2,})[ \t]*(?<infoString>(?!\k<type>)(?:.*?))[ \t]*\n(?<content>.*?)(?:\n(?:\k<quantity>\k<type>*[ \t]*\n)|$)/gs
 
 export function compile(source: string, base: URL) {
 	const scripts: string[] = []
 
-	for (const match of source.matchAll(CODE_FENCE)) {
+	for (
+		const match of source.matchAll(FENCED_CODE_BLOCK)
+	) {
 		const { groups } = match as unknown as {
 			groups: CodeFenceMatchGroups
 		}
