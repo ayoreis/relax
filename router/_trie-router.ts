@@ -1,78 +1,64 @@
-type KeyOfMap<TheMap extends Map<unknown, unknown>> =
-	TheMap extends Map<infer Key, unknown> ? Key : never
-
-type ValueOfMap<TheMap extends Map<unknown, unknown>> =
-	TheMap extends Map<unknown, infer Value> ? Value : never
+import { ensureMapKey } from '../_shared/ensure-map-key.ts'
 
 type Handler = unknown
-type Route = Map<URLPattern | symbol, Route | Handler>
 
-const OWN_HANDLER_KEY = Symbol('Own handler key')
+const OWN_HANDLER_KEY = Symbol('Handler')
 
-function ensureMapKey<
-	TheMap extends Map<unknown, unknown>,
->(
-	map: TheMap,
-	key: KeyOfMap<TheMap>,
-	value: ValueOfMap<TheMap>,
-) {
-	if (map.has(key)) return
-
-	map.set(key, value)
+class Trie extends Map<URLPattern, Trie> {
+	[OWN_HANDLER_KEY]?: Handler
 }
 
 class TrieRouter {
-	#routes: Route = new Map()
+	trieTree = new Trie()
 
 	add(pathname: string, handler: Handler) {
 		const directoriesNames = pathname.split('/')
 
-		let currentRoute = this.#routes
+		let currentNode = this.trieTree
 
 		for (const directoriesName of directoriesNames) {
-			const urlPattern = new URLPattern({
+			const key = new URLPattern({
 				pathname: directoriesName,
 			})
 
-			ensureMapKey(
-				currentRoute,
-				urlPattern,
-				new Map(),
-			)
-
-			currentRoute = currentRoute.get(urlPattern) as Route
+			currentNode = ensureMapKey(
+				currentNode,
+				key,
+				new Trie(),
+			)!
 		}
 
-		currentRoute.set(OWN_HANDLER_KEY, handler)
+		currentNode[OWN_HANDLER_KEY] = handler
 	}
 
 	fetch(pathname: string) {
 		const directoriesNames = pathname.split('/')
 
-		let currentRoute = this.#routes
+		let currentNode = this.trieTree
 
+		outer:
 		for (const directoryName of directoriesNames) {
 			for (
-				const [urlPattern, route] of currentRoute as Map<
-					URLPattern,
-					Route
-				>
+				const [urlPattern, node] of currentNode
 			) {
 				if (!urlPattern.test({ pathname: directoryName })) {
 					continue
 				}
 
-				currentRoute = route
+				currentNode = node
 
-				break
+				continue outer
 			}
+
+			return
 		}
 
-		return currentRoute.get(OWN_HANDLER_KEY)
+		return currentNode[OWN_HANDLER_KEY]
 	}
 }
 
 const trieRouter = new TrieRouter()
 
-trieRouter.add('/', 'Handler sjsjsj')
-console.log(trieRouter.fetch('/settings/password/reset'))
+trieRouter.add('/settings', 'Handler sjsjsj')
+
+console.log(trieRouter.fetch('/settings'))
