@@ -1,5 +1,9 @@
 import { SWCTypes } from './_dependencies.ts'
-import { getAccumulatedSpan, parse } from './_estree.ts'
+
+import {
+	getAccumulatedSpan,
+	parse,
+} from './_typescript-parser.ts'
 
 export function compileMustaches(HTML: string) {
 	for (let index = 0; index < HTML.length;) {
@@ -21,7 +25,7 @@ export function compileMustaches(HTML: string) {
 				.expression as SWCTypes.TemplateLiteral
 		).expressions
 
-		// @ts-ignore `MetaProperty` does have a `span`
+		// @ts-ignore `MetaProperty` has a `span` property
 		const end = expression.span.end - accumulatedSpan
 
 		HTML = `${HTML.slice(0, nextOpeningBracketIndex)}$${
