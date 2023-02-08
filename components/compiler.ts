@@ -1,12 +1,11 @@
-import { parse, print } from './_estree.ts'
 import { compileMustaches } from './_mustache-compiler.ts'
+import { parse, print } from './_typescript-parser.ts'
 
 type Indentation = '' | ' '
 
 interface CodeFenceMatchGroups {
 	content: string
-	indentation:
-		`${Indentation}${Indentation}${Indentation}`
+	indentation: `${Indentation}${Indentation}${Indentation}`
 	infoString: string
 	quantity: number
 	type: '`' | '~'
@@ -14,9 +13,9 @@ interface CodeFenceMatchGroups {
 
 /** https://spec.commonmark.org/0.30/#fenced-code-blocks */
 const FENCED_CODE_BLOCK =
-	/(?<=^|\n)(?<indentation> {0,3})(?<quantity>(?<type>[`~])\k<type>{2,})[ \t]*(?<infoString>(?!\k<type>)(?:.*?))[ \t]*\n(?<content>.*?)(?:\n(?:\k<quantity>\k<type>*[ \t]*\n)|$)/gs
+	/(?<=^|(?:\n|(?:\r\n?)))(?<indentation> {0,3})(?<quantity>(?<type>[`~])\k<type>{2,})[ \t]*(?<infoString>(?!\k<type>)(?:.*?))[ \t]*(?:\n|(?:\r\n?))(?<content>.*?(?:\n|(?:\r\n?)))?(?:\k<quantity>\k<type>*[ \t]*(?:\n|(?:\r\n?))|$)/gs
 
-export function compile(source: string, base: URL) {
+export function compile(source: string, _base: URL) {
 	const scripts: string[] = []
 
 	for (
@@ -25,8 +24,6 @@ export function compile(source: string, base: URL) {
 		const { groups } = match as unknown as {
 			groups: CodeFenceMatchGroups
 		}
-
-		groups.infoString.replace(/^[ \t]*(.*?)[ \t]*$/, '')
 
 		source = source.replace(match[0], '')
 
