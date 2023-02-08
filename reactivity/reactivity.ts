@@ -39,7 +39,7 @@ export function trigger(target: Target, key: Key) {
 	for (const effect of effects) effect()
 }
 
-function reactive<Type>(
+export function reactive<Type>(
 	initialValue: Type,
 ) {
 	let value = initialValue
