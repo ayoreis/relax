@@ -1,24 +1,36 @@
+import type { MaybePromise } from '../_shared/types.ts'
+
+type Target = <Type>(newValue: Type) => Type
 type Key = string | number | symbol
-type Target = Record<Key, unknown>
+type Effect = () => void
 
-const effectWatchers = new WeakMap<Target, Map<Key, Set<() => void>>>()
+const effectSubscribers = new WeakMap<
+	Target,
+	Map<Key, Set<Effect>>
+>()
 
-let activeEffect: (() => void) | null = null
+let activeEffect: Effect | null = null
 
-function getSubscribersForProperty(target: Target, key: Key) {
-	if (!effectWatchers.has(target)) effectWatchers.set(target, new Map())
+function getSubscribersForProperty(
+	target: Target,
+	key: Key,
+) {
+	if (!effectSubscribers.has(target)) {
+		effectSubscribers.set(target, new Map())
+	}
 
-	if (!effectWatchers.get(target)!.has(key))
-		effectWatchers.get(target)!.set(key, new Set())
+	if (!effectSubscribers.get(target)!.has(key)) {
+		effectSubscribers.get(target)!.set(key, new Set())
+	}
 
-	return effectWatchers.get(target)!.get(key)!
+	return effectSubscribers.get(target)!.get(key)!
 }
 
 export function track(target: Target, key: Key) {
 	if (!activeEffect) return
 
-	const watchers = getSubscribersForProperty(target, key)
-	watchers.add(activeEffect)
+	const effects = getSubscribersForProperty(target, key)
+	effects.add(activeEffect)
 }
 
 export function trigger(target: Target, key: Key) {
@@ -27,42 +39,37 @@ export function trigger(target: Target, key: Key) {
 	for (const effect of effects) effect()
 }
 
-export function object<Type extends Target>(obj: Type) {
-	return new Proxy(obj, {
-		get(target, key) {
-			track(target, key)
+function reactive<Type>(
+	initialValue: Type,
+) {
+	let value = initialValue
 
-			return Reflect.get(target, key)
-		},
+	const foo = ((
+		newValue,
+	): Type => {
+		trigger(foo as Target, 'value')
 
-		set(target, key, value, receiver) {
-			trigger(target, key)
+		return value = newValue
+	}) as Type & ((newType: Type) => Type)
+	;(foo as Record<symbol, () => Type>)[
+		Symbol.toPrimitive
+	] = () => {
+		track(foo as Target, 'value')
 
-			return Reflect.set(target, key, value, receiver)
-		},
-	})
-}
-
-export function variable<Type>(value: Type) {
-	return {
-		get value() {
-			track(this, 'value')
-			return value
-		},
-
-		set value(newValue) {
-			value = newValue
-			trigger(this, 'value')
-		},
+		return value
 	}
+
+	return foo
 }
 
-export function watchEffect(update: () => void) {
+export async function effect(
+	update: () => MaybePromise<void>,
+) {
 	async function effect() {
 		activeEffect = effect
 		await update()
 		activeEffect = null
 	}
 
-	effect()
+	await effect()
 }
