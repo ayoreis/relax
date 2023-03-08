@@ -1,9 +1,7 @@
 {
 	"fmt": {
 		"options": {
-			"indentWidth": 4,
 			"lineWidth": 60,
-			"semiColons": false,
 			"singleQuote": true,
 			"useTabs": true
 		}
