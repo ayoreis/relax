@@ -2,6 +2,8 @@
 
 For making websites
 
+[Documentation](https://github.com/ayoreis/relax/wiki)
+
 ## Todo
 
 - [ ] Router

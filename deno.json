@@ -5,5 +5,9 @@
 			"singleQuote": true,
 			"useTabs": true
 		}
+	},
+
+	"tasks": {
+		"test": "deno test"
 	}
 }
