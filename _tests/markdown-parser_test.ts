@@ -1,4 +1,4 @@
-import { parse } from './markdown-parser.ts';
+import { parse } from '../templating/_markdown-parser.ts';
 
 const markdown = `# Hello world
 

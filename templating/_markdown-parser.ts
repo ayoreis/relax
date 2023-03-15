@@ -7,6 +7,10 @@ const LINE_ENDING = /(?<=\n|\r\n?)/;
 /** https://spec.commonmark.org/0.30/#blank-line */
 const BLANK_LINE = /^[ \t]*(\n|\r\n?)$/;
 
+/** https://spec.commonmark.org/0.30/#thematic-breaks */
+const THEMATIC_BREAK =
+	/^ {0,3}(?<type>[-_*])[ \t]*(?:\k<type>[ \t]*){2,}(?:\n|\r\n?)$/;
+
 /** https://spec.commonmark.org/0.30/#blocks */
 class Block {
 	children: Block[] = [];
@@ -29,15 +33,31 @@ class Block {
 }
 
 /** https://spec.commonmark.org/0.30/#leaf-blocks */
-class LeafBlock extends Block {
-}
+class LeafBlock extends Block {}
 
 /** https://spec.commonmark.org/0.30/#container-blocks */
-class ContainerBlock extends Block {
-}
+class ContainerBlock extends Block {}
 
 /** https://spec.commonmark.org/0.30/#overview */
 class DocumentBlock extends ContainerBlock {}
+
+/** https://spec.commonmark.org/0.30/#thematic-breaks */
+class ThematicBreakBlock extends LeafBlock {
+	[Symbol.match]() {
+		return false;
+	}
+
+	static [Symbol.match](line: string) {
+		if (!THEMATIC_BREAK.test(line)) return null;
+
+		const thematicBreakBlock = new this();
+
+		thematicBreakBlock.lastIndex = line.length - 1;
+
+		return thematicBreakBlock;
+	}
+}
+
 /** https://spec.commonmark.org/0.30/#paragraphs */
 class ParagraphBlock extends LeafBlock {
 	rawContent = '';
@@ -69,6 +89,7 @@ class ParagraphBlock extends LeafBlock {
 export function parse(input: string) {
 	// https://spec.commonmark.org/0.30/#insecure-characters
 	input = input.replaceAll('\0', '\uFFFD');
+
 	// TODO https://spec.commonmark.org/0.30/#backslash-escapes
 	// TODO https://spec.commonmark.org/0.30/#entity-and-numeric-character-references
 
@@ -113,7 +134,21 @@ export function parse(input: string) {
 					ParagraphBlock,
 				) as unknown as ParagraphBlock;
 
-				if (paragraphBlockMatch) {
+				const thematicBreakBlock = restOfLine.match( // @ts-ignore Definition is wrong
+					ThematicBreakBlock,
+				) as unknown as ThematicBreakBlock;
+
+				if (thematicBreakBlock) {
+					for (const unmatchedBlock of unmatchedBlocks) {
+						unmatchedBlock.close();
+					}
+
+					lastMatchedContainerBlock.children.push(
+						thematicBreakBlock,
+					);
+
+					lastOpenBlock = thematicBreakBlock;
+				} else if (paragraphBlockMatch) {
 					for (const unmatchedBlock of unmatchedBlocks) {
 						unmatchedBlock.close();
 					}
@@ -130,7 +165,10 @@ export function parse(input: string) {
 					unmatchedBlock.close();
 				}
 
-				lastOpenBlock.rawContent += restOfLine;
+				if (lastOpenBlock instanceof ParagraphBlock) {
+					lastOpenBlock.rawContent += restOfLine;
+				}
+
 				index += restOfLine.length;
 			}
 		}
