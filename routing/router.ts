@@ -10,7 +10,9 @@ type Method =
 	| 'TRACE'
 	| 'PATCH';
 
-type Handler = (request: Request) => Response;
+type Handler = (
+	request: Request,
+) => Promise<Response> | Response;
 
 export class Router {
 	readonly #routes: Record<
@@ -32,14 +34,14 @@ export class Router {
 		this.#routes[method].push({ pathname, handler });
 	}
 
-	handle = (request: Request) => {
+	handle = async (request: Request) => {
 		const method = request.method as Method;
 		const { pathname } = new URL(request.url);
 
 		for (const route of this.#routes[method]) {
 			if (route.pathname !== pathname) continue;
 
-			return route.handler(request);
+			return await route.handler(request);
 		}
 	};
 }
