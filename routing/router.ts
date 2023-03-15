@@ -12,12 +12,13 @@ type Method =
 
 type Handler = (
 	request: Request,
+	groups: URLPatternComponentResult['groups'],
 ) => Promise<Response> | Response;
 
 export class Router {
 	readonly #routes: Record<
 		Method,
-		{ pathname: string; handler: Handler }[]
+		{ urlPattern: URLPattern; handler: Handler }[]
 	> = {
 		GET: [],
 		HEAD: [],
@@ -31,7 +32,9 @@ export class Router {
 	};
 
 	add(method: Method, pathname: string, handler: Handler) {
-		this.#routes[method].push({ pathname, handler });
+		const urlPattern = new URLPattern({ pathname });
+
+		this.#routes[method].push({ urlPattern, handler });
 	}
 
 	handle = async (request: Request) => {
@@ -39,9 +42,12 @@ export class Router {
 		const { pathname } = new URL(request.url);
 
 		for (const route of this.#routes[method]) {
-			if (route.pathname !== pathname) continue;
+			if (!route.urlPattern.test({ pathname })) continue;
 
-			return await route.handler(request);
+			const { pathname: { groups } } = route.urlPattern
+				.exec({ pathname })!;
+
+			return await route.handler(request, groups);
 		}
 	};
 }
