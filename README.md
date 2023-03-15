@@ -14,7 +14,7 @@ For making websites
   - [ ] Frontmatter parser (plus specification)
   - [ ] Mustache compiler
 - [ ] Templating
-  - [ ] Markdown parser
+  - [ ] `WIP` Markdown parser
   - [ ] HTML parser
 - [ ] Reactivity
   - [ ] DOM differ
