@@ -1,4 +1,6 @@
-/** https://spec.commonmark.org/0.30 */
+import { red } from './_dependencies.ts';
+
+// https://spec.commonmark.org/0.30
 // https://spec.commonmark.org/0.30/#preliminaries
 // https://spec.commonmark.org/0.30/#characters-and-lines
 
@@ -14,10 +16,8 @@ const THEMATIC_BREAK =
 /** https://spec.commonmark.org/0.30/#blocks */
 class Block {
 	children: Block[] = [];
-	// TODO Open vs closed
 	open = true;
-
-	lastIndex?: number;
+	lastIndex = 0;
 
 	[Symbol.match](_line: string) {
 		return false;
@@ -32,14 +32,18 @@ class Block {
 	}
 }
 
-/** https://spec.commonmark.org/0.30/#leaf-blocks */
-class LeafBlock extends Block {}
-
 /** https://spec.commonmark.org/0.30/#container-blocks */
 class ContainerBlock extends Block {}
 
+/** https://spec.commonmark.org/0.30/#leaf-blocks */
+class LeafBlock extends Block {}
+
 /** https://spec.commonmark.org/0.30/#overview */
-class DocumentBlock extends ContainerBlock {}
+class DocumentBlock extends ContainerBlock {
+	[Symbol.match]() {
+		return true;
+	}
+}
 
 /** https://spec.commonmark.org/0.30/#thematic-breaks */
 class ThematicBreakBlock extends LeafBlock {
@@ -63,25 +67,13 @@ class ParagraphBlock extends LeafBlock {
 	rawContent = '';
 
 	[Symbol.match](line: string) {
-		const blankLineMatch = line.match(BLANK_LINE);
-
-		if (blankLineMatch) {
-			return false;
-		}
-
-		this.lastIndex = 0;
-
-		return true;
+		return !line.match(BLANK_LINE);
 	}
 
 	static [Symbol.match](line: string) {
 		if (BLANK_LINE.test(line)) return null;
 
-		const paragraphBlock = new this();
-
-		paragraphBlock.lastIndex = 0;
-
-		return paragraphBlock;
+		return new this();
 	}
 }
 
@@ -100,77 +92,98 @@ export function parse(input: string) {
 	const lines = input.split(LINE_ENDING);
 
 	for (const line of lines) {
-		let index = 0;
-
 		const unmatchedBlocks: Block[] = [];
+
+		let index = 0;
 		let lastOpenBlock: Block = treeOfBlocks;
 		let lastMatchedContainerBlock = lastOpenBlock;
 
 		while (true) {
-			const match = line.match( // @ts-ignore Definition is wrong
-				lastOpenBlock,
-			) as unknown as boolean;
+			// @ts-ignore Definition is wrong
+			const match = line.match(lastOpenBlock);
 
 			if (!match) {
 				unmatchedBlocks.push(lastOpenBlock);
-			} else if (lastOpenBlock instanceof ContainerBlock) {
-				lastMatchedContainerBlock = lastOpenBlock;
+			} else {
+				index += lastOpenBlock.lastIndex;
 
-				index += lastOpenBlock.lastIndex!;
+				if (match instanceof ContainerBlock) {
+					lastMatchedContainerBlock = lastOpenBlock;
+				}
 			}
 
 			const lastChild = lastOpenBlock.children.at(-1);
 
-			if (!(lastChild?.open)) break;
+			if (!lastChild?.open) break;
 
-			lastOpenBlock = lastChild;
+			lastOpenBlock = lastChild!;
 		}
 
-		for (; index < line.length;) {
-			const restOfLine = line.slice(index);
+		let restOfLine = line.slice(index);
 
-			if (lastOpenBlock instanceof ContainerBlock) {
-				const paragraphBlockMatch = restOfLine.match( // @ts-ignore Definition is wrong
-					ParagraphBlock,
-				) as unknown as ParagraphBlock;
+		while (
+			index < line.length &&
+			lastOpenBlock instanceof ContainerBlock
+		) {
+			const thematicBreakBlockMatch = restOfLine.match( // @ts-ignore Definition is wrong
+				ThematicBreakBlock,
+			) as unknown as ThematicBreakBlock | null;
 
-				const thematicBreakBlock = restOfLine.match( // @ts-ignore Definition is wrong
-					ThematicBreakBlock,
-				) as unknown as ThematicBreakBlock;
-
-				if (thematicBreakBlock) {
-					for (const unmatchedBlock of unmatchedBlocks) {
-						unmatchedBlock.close();
-					}
-
-					lastMatchedContainerBlock.children.push(
-						thematicBreakBlock,
-					);
-
-					lastOpenBlock = thematicBreakBlock;
-				} else if (paragraphBlockMatch) {
-					for (const unmatchedBlock of unmatchedBlocks) {
-						unmatchedBlock.close();
-					}
-
-					lastMatchedContainerBlock.children.push(
-						paragraphBlockMatch,
-					);
-
-					lastOpenBlock = paragraphBlockMatch;
-				}
-			} else if (lastOpenBlock instanceof LeafBlock) {
-				// TODO Test if paragraph should continue
+			if (thematicBreakBlockMatch) {
 				for (const unmatchedBlock of unmatchedBlocks) {
-					unmatchedBlock.close();
+					unmatchedBlock.close;
 				}
 
-				if (lastOpenBlock instanceof ParagraphBlock) {
-					lastOpenBlock.rawContent += restOfLine;
-				}
+				lastMatchedContainerBlock.children.push(
+					thematicBreakBlockMatch,
+				);
 
-				index += restOfLine.length;
+				lastOpenBlock = thematicBreakBlockMatch;
+				index += thematicBreakBlockMatch.lastIndex;
+				restOfLine = line.slice(index);
+
+				continue;
 			}
+
+			const paragraphBlockMatch = restOfLine.match( // @ts-ignore Definition is wrong
+				ParagraphBlock,
+			) as unknown as ParagraphBlock | null;
+
+			if (paragraphBlockMatch) {
+				for (const unmatchedBlock of unmatchedBlocks) {
+					unmatchedBlock.close;
+				}
+
+				lastMatchedContainerBlock.children.push(
+					paragraphBlockMatch,
+				);
+
+				lastOpenBlock = paragraphBlockMatch;
+				index += paragraphBlockMatch.lastIndex;
+				restOfLine = line.slice(index);
+
+				continue;
+			}
+		}
+
+		for (const unmatchedBlock of unmatchedBlocks) {
+			unmatchedBlock.close();
+		}
+
+		lastOpenBlock = treeOfBlocks;
+
+		while (true) {
+			const lastChild = lastOpenBlock.children.at(-1);
+
+			if (!lastChild?.open) break;
+
+			lastOpenBlock = lastChild!;
+		}
+
+		if (lastOpenBlock instanceof ParagraphBlock) {
+			lastOpenBlock.rawContent += restOfLine;
+		} else {
+			console.error(red('TODO'));
 		}
 
 		// TODO Setext headings are formed when we see a line of a paragraph that is a setext heading underline.
@@ -178,10 +191,18 @@ export function parse(input: string) {
 		// TODO Reference link definitions are detected when a paragraph is closed; the accumulated text lines are parsed to see if they  begin with one or more reference link definitions. Any remainder becomes a normal paragraph.
 	}
 
-	// TODO close all open blocks
+	// TODO Close all open blocks
 	treeOfBlocks.close();
 
 	// TODO https://spec.commonmark.org/0.30/#phase-2-inline-structure
 
 	return treeOfBlocks;
 }
+
+console.log(parse(`# Hello world
+
+Lorem ipsum 1.
+
+---
+
+Lorem ipsum 2.`));
