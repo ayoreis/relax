@@ -1,4 +1,13 @@
-import { red } from './_dependencies.ts';
+declare global {
+	interface RegExpMatchArray {
+		indices: [number, number][];
+	}
+}
+
+import { todo } from '../_shared/todo.ts';
+
+type ATXHeadingBlockLevel = 1 | 2 | 3 | 4 | 5 | 6;
+type SetextHeadingBlockLevel = 1 | 2;
 
 // https://spec.commonmark.org/0.30
 // https://spec.commonmark.org/0.30/#preliminaries
@@ -7,58 +16,149 @@ import { red } from './_dependencies.ts';
 /** https://spec.commonmark.org/0.30/#line-ending */
 const LINE_ENDING = /(?<=\n|\r\n?)/;
 /** https://spec.commonmark.org/0.30/#blank-line */
-const BLANK_LINE = /^[ \t]*(\n|\r\n?)$/;
-
-/** https://spec.commonmark.org/0.30/#thematic-breaks */
-const THEMATIC_BREAK =
-	/^ {0,3}(?<type>[-_*])[ \t]*(?:\k<type>[ \t]*){2,}(?:\n|\r\n?)$/;
+const BLANK_LINE = /^[ \t]*(\n|\r\n?)$/d;
 
 /** https://spec.commonmark.org/0.30/#blocks */
-class Block {
+abstract class Block {
 	children: Block[] = [];
 	open = true;
-	lastIndex = 0;
+	_lastIndex = 0;
 
-	[Symbol.match](_line: string) {
+	// TODO https://github.com/microsoft/TypeScript/issues/34516
+	static [Symbol.match](_line: string): Block | null {
+		return null;
+	}
+
+	abstract [Symbol.match](line: string): boolean;
+	abstract close(): void;
+}
+
+/** https://spec.commonmark.org/0.30/#container-blocks */
+abstract class ContainerBlock extends Block {}
+
+/** https://spec.commonmark.org/0.30/#leaf-blocks */
+abstract class LeafBlock extends Block {}
+
+/** https://spec.commonmark.org/0.30/#overview */
+class DocumentBlock extends ContainerBlock {
+	static [Symbol.match]() {
+		return null;
+	}
+
+	[Symbol.match]() {
+		return true;
+	}
+
+	close() {
+		this.open = false;
+	}
+}
+
+/** https://spec.commonmark.org/0.30/#thematic-breaks */
+class ThematicBreakBlock extends LeafBlock {
+	static #THEMATIC_BREAK =
+		/^ {0,3}(?<type>[-_*])[ \t]*(?:\k<type>[ \t]*){2,}(?:\n|\r\n?)$/;
+
+	static [Symbol.match](line: string) {
+		if (!this.#THEMATIC_BREAK.test(line)) return null;
+
+		const thematicBreakBlock = new this();
+
+		thematicBreakBlock._lastIndex = line.length - 1;
+
+		return thematicBreakBlock;
+	}
+
+	[Symbol.match]() {
 		return false;
 	}
 
 	close() {
 		this.open = false;
 	}
-
-	static [Symbol.match](_line: string): Block | null {
-		return null;
-	}
 }
 
-/** https://spec.commonmark.org/0.30/#container-blocks */
-class ContainerBlock extends Block {}
+/** https://spec.commonmark.org/0.30/#atx-headings */
+class ATXHeadingBlock extends LeafBlock {
+	static #ATX_HEADING_START =
+		/^ {0,3}(?<level>#{1,6})(?=(?:[ \t]|(\n|\r\n?)$))/d;
 
-/** https://spec.commonmark.org/0.30/#leaf-blocks */
-class LeafBlock extends Block {}
+	#ATX_HEADING_RAW_CONTENTS_AFTER_START =
+		/^(?:(?:[ \t]+|$)(?<rawContents>.*?))??([ \t]+#+)?(\n|\r\n?)$/;
 
-/** https://spec.commonmark.org/0.30/#overview */
-class DocumentBlock extends ContainerBlock {
-	[Symbol.match]() {
-		return true;
+	rawContents = '';
+	level!: ATXHeadingBlockLevel;
+
+	static [Symbol.match](line: string) {
+		const ATXHeadingMatch = line.match(
+			this.#ATX_HEADING_START,
+		);
+
+		if (!ATXHeadingMatch) return null;
+
+		const ATXHeadingBlock = new this();
+
+		ATXHeadingBlock.level = Number(
+			ATXHeadingMatch.groups!.level.length,
+		) as ATXHeadingBlockLevel;
+
+		ATXHeadingBlock._lastIndex =
+			ATXHeadingMatch.indices[0][1];
+
+		return ATXHeadingBlock;
 	}
-}
 
-/** https://spec.commonmark.org/0.30/#thematic-breaks */
-class ThematicBreakBlock extends LeafBlock {
 	[Symbol.match]() {
 		return false;
 	}
 
+	close(): void {
+		// change raw content
+		const r = this.rawContents.match(
+			this.#ATX_HEADING_RAW_CONTENTS_AFTER_START,
+		);
+
+		this.rawContents = r!.groups!.rawContents;
+
+		this.open = false;
+	}
+}
+
+/** https://spec.commonmark.org/0.30/#setext-headings */
+class SetextHeadingBlock extends LeafBlock {
+	/** https://spec.commonmark.org/0.30/#setext-heading-underline */
+	static #SETEXT_HEADING_UNDERLINE =
+		/^ {0,3}(?<type>[=-])\k<type>*[ \t]*(\n|\r\n?)$/d;
+
+	level!: SetextHeadingBlockLevel;
+
+	rawContent = '';
+
 	static [Symbol.match](line: string) {
-		if (!THEMATIC_BREAK.test(line)) return null;
+		const setextHeadingMatch = line.match(
+			this.#SETEXT_HEADING_UNDERLINE,
+		);
 
-		const thematicBreakBlock = new this();
+		if (!setextHeadingMatch) return null;
 
-		thematicBreakBlock.lastIndex = line.length - 1;
+		const setextHeadingBlock = new this();
 
-		return thematicBreakBlock;
+		console.log(setextHeadingMatch.groups);
+
+		setextHeadingBlock._lastIndex =
+			setextHeadingMatch.indices[0][1];
+
+		return setextHeadingBlock;
+	}
+
+	[Symbol.match]() {
+		return false;
+	}
+
+	close(): void {
+		this.open = false;
+
+		// TODO Stuff
 	}
 }
 
@@ -75,7 +175,45 @@ class ParagraphBlock extends LeafBlock {
 
 		return new this();
 	}
+
+	close() {
+		this.open = false;
+
+		// TODO Stuff
+	}
 }
+
+/** https://spec.commonmark.org/0.30/#blank-lines */
+class BlankLineBlock extends LeafBlock {
+	[Symbol.match]() {
+		return false;
+	}
+
+	static [Symbol.match](line: string) {
+		const blankLineMatch = line.match(BLANK_LINE);
+
+		if (!blankLineMatch) return null;
+
+		const blankLineBlock = new this();
+
+		blankLineBlock._lastIndex =
+			blankLineMatch!.indices[0][1];
+
+		return blankLineBlock;
+	}
+
+	close() {
+		this.open = false;
+	}
+}
+
+const BLOCKS = [
+	ThematicBreakBlock,
+	ATXHeadingBlock,
+	// SetextHeadingBlock,
+	ParagraphBlock,
+	BlankLineBlock,
+] as const;
 
 /** https://spec.commonmark.org/0.30/#appendix-a-parsing-strategy */
 export function parse(input: string) {
@@ -99,13 +237,14 @@ export function parse(input: string) {
 		let lastMatchedContainerBlock = lastOpenBlock;
 
 		while (true) {
-			// @ts-ignore Definition is wrong
-			const match = line.match(lastOpenBlock);
+			const match = line.match( // @ts-ignore Definition is wrong
+				lastOpenBlock as unknown as Block,
+			) as unknown as Block;
 
 			if (!match) {
 				unmatchedBlocks.push(lastOpenBlock);
 			} else {
-				index += lastOpenBlock.lastIndex;
+				// index += lastOpenBlock._lastIndex;
 
 				if (match instanceof ContainerBlock) {
 					lastMatchedContainerBlock = lastOpenBlock;
@@ -119,52 +258,62 @@ export function parse(input: string) {
 			lastOpenBlock = lastChild!;
 		}
 
+		if (lastOpenBlock instanceof ParagraphBlock) {
+			const setextHeadingMatch = line.match(
+				// @ts-ignore Definition is wrong
+				SetextHeadingBlock,
+			) as unknown as SetextHeadingBlock;
+
+			if (
+				!setextHeadingMatch
+			) continue;
+
+			index += setextHeadingMatch._lastIndex;
+
+			setextHeadingMatch.rawContent =
+				lastOpenBlock.rawContent;
+
+			setextHeadingMatch.level;
+
+			lastMatchedContainerBlock.children.pop();
+			lastMatchedContainerBlock.children.push(
+				setextHeadingMatch,
+			);
+
+			lastOpenBlock = setextHeadingMatch;
+		}
+
 		let restOfLine = line.slice(index);
 
-		while (
+		do {
+			for (const block of BLOCKS) {
+				const match = restOfLine.match(
+					// @ts-ignore Definition is wrong
+					block,
+				) as unknown as Block | null;
+
+				if (!match) continue;
+
+				for (const unmatchedBlock of unmatchedBlocks) {
+					unmatchedBlock.close;
+				}
+
+				lastMatchedContainerBlock.children.push(
+					match,
+				);
+
+				lastOpenBlock = match;
+				index += match._lastIndex;
+				restOfLine = line.slice(index);
+
+				break;
+			}
+
+			console.log('here', [restOfLine]);
+		} while (
 			index < line.length &&
 			lastOpenBlock instanceof ContainerBlock
-		) {
-			const thematicBreakBlockMatch = restOfLine.match( // @ts-ignore Definition is wrong
-				ThematicBreakBlock,
-			) as unknown as ThematicBreakBlock | null;
-
-			if (thematicBreakBlockMatch) {
-				for (const unmatchedBlock of unmatchedBlocks) {
-					unmatchedBlock.close;
-				}
-
-				lastMatchedContainerBlock.children.push(
-					thematicBreakBlockMatch,
-				);
-
-				lastOpenBlock = thematicBreakBlockMatch;
-				index += thematicBreakBlockMatch.lastIndex;
-				restOfLine = line.slice(index);
-
-				continue;
-			}
-
-			const paragraphBlockMatch = restOfLine.match( // @ts-ignore Definition is wrong
-				ParagraphBlock,
-			) as unknown as ParagraphBlock | null;
-
-			if (paragraphBlockMatch) {
-				for (const unmatchedBlock of unmatchedBlocks) {
-					unmatchedBlock.close;
-				}
-
-				lastMatchedContainerBlock.children.push(
-					paragraphBlockMatch,
-				);
-
-				lastOpenBlock = paragraphBlockMatch;
-				index += paragraphBlockMatch.lastIndex;
-				restOfLine = line.slice(index);
-
-				continue;
-			}
-		}
+		);
 
 		for (const unmatchedBlock of unmatchedBlocks) {
 			unmatchedBlock.close();
@@ -180,13 +329,15 @@ export function parse(input: string) {
 			lastOpenBlock = lastChild!;
 		}
 
-		if (lastOpenBlock instanceof ParagraphBlock) {
+		if (
+			lastOpenBlock instanceof ATXHeadingBlock
+		) {
+			lastOpenBlock.rawContents += restOfLine;
+		} else if (lastOpenBlock instanceof ParagraphBlock) {
 			lastOpenBlock.rawContent += restOfLine;
 		} else {
-			console.error(red('TODO'));
+			todo();
 		}
-
-		// TODO Setext headings are formed when we see a line of a paragraph that is a setext heading underline.
 
 		// TODO Reference link definitions are detected when a paragraph is closed; the accumulated text lines are parsed to see if they  begin with one or more reference link definitions. Any remainder becomes a normal paragraph.
 	}
@@ -199,10 +350,15 @@ export function parse(input: string) {
 	return treeOfBlocks;
 }
 
-console.log(parse(`# Hello world
+console.log(
+	parse(`# Hello world
+
+___
 
 Lorem ipsum 1.
-
 ---
 
-Lorem ipsum 2.`));
+
+
+Lorem ipsum 2.`),
+);
