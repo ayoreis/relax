@@ -4,6 +4,14 @@ For making websites
 
 [Documentation](https://github.com/ayoreis/relax/wiki) • [Discord](https://discord.gg/24AyvbBKcJ) • [Figma](https://www.figma.com/file/3myIn1Wy6vaF7atUwasMPU/Relax?type=design&node-id=0-1&mode=design&t=m4lIDItLqaws1rSI-0)
 
+## Contributing
+
+We have a #dev channel in Discord.
+
+Deno is used for formatting, linting and testing.
+
+We use [Conventional Commits](https://www.conventionalcommits.org/) (description capitalized) and [Semantic Versioning](https://semver.org).
+
 ---
 
 <details>
@@ -44,7 +52,7 @@ For making websites
 
 ---
 
-There a few proposals/modules which would benefit Relax if they would happen, I want to contribute/propose/create to them.
+There a few proposals/modules which would benefit Relax, I want to contribute/propose/create them.
 
 - [ ] Python-Pickle like serialization.
 - [ ] JavaScript parser
@@ -55,7 +63,7 @@ There a few proposals/modules which would benefit Relax if they would happen, I 
   - [ ] denoland/deno#15482, denoland/deno#19322
   - [ ] [tc39/proposal-error-stacks](https://github.com/tc39/proposal-error-stacks)
 
----
+<br/>
 
 - [ ] Decorators
   - [ ] [tc39/proposal-decorator-metadata](https://github.com/tc39/proposal-decorator-metadata)
@@ -68,7 +76,7 @@ There a few proposals/modules which would benefit Relax if they would happen, I 
 - [ ] [tc39/proposal-do-expressions](https://github.com/tc39/proposal-do-expressions)
 - [ ] [tc39/proposal-async-do-expressions](https://github.com/tc39/proposal-async-do-expressions)
 
----
+<br/>
 
 - [ ] WICG/urlpattern#61
 - [ ] WICG/webcomponents#939
