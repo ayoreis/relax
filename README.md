@@ -1,8 +1,26 @@
+<div align="center">
+
 # Relax
 
 For making websites
 
-[Documentation](https://github.com/ayoreis/relax/wiki) • [Discord](https://discord.gg/24AyvbBKcJ) • [Figma](https://www.figma.com/file/3myIn1Wy6vaF7atUwasMPU/Relax?type=design&node-id=0-1&mode=design&t=m4lIDItLqaws1rSI-0)
+[Documentation](https://github.com/ayoreis/relax/wiki) × [Registry](https://deno.land/x/relax) × [API](https://deno.land/x/relax?doc) × [Source](https://github.com/ayoreis/relax) × [Discord](https://discord.gg/24AyvbBKcJ) × [Figma](https://www.figma.com/file/3myIn1Wy6vaF7atUwasMPU/Relax?type=design&node-id=0-1&mode=design&t=m4lIDItLqaws1rSI-0)
+
+</div>
+
+<br>
+
+```typescript
+router.any('*', function* () {
+	console.time();
+	yield;
+	console.timeEnd();
+});
+
+router.get('/', () => {
+	return new Response('Hello world');
+});
+```
 
 ## Contributing
 
@@ -12,18 +30,32 @@ Deno is used for formatting, linting and testing.
 
 We use [Conventional Commits](https://www.conventionalcommits.org/) (description capitalized) and [Semantic Versioning](https://semver.org).
 
----
+<details>
+<summary>
+
+## Todo</summary>
 
 <details>
 <summary>Router</summary>
 
 - [ ] Server side
+  - [ ] Middleware
+  - [ ] Typed URL parameters
 - [ ] Client side
 - [ ] File system?
+- [ ] Component
 - [ ] Benchmark
 - [ ] Handlers
-    - [ ] Trailing slashes
-    - [ ] WWW redirects
+  - [ ] Trailing slashes
+  - [ ] WWW redirects
+- [ ] Client side
+- [ ] File system?
+- [ ] Component
+- [ ] Benchmark
+- [ ] Handlers
+  - [ ] Trailing slashes
+  - [ ] WWW redirects
+
 </details>
 
 <details>
@@ -31,6 +63,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/) (description
 
 - [ ] Frontmatter parser
 - [ ] Mustache compiler
+
 </details>
 
 <details>
@@ -38,6 +71,7 @@ We use [Conventional Commits](https://www.conventionalcommits.org/) (description
 
 - [ ] Markdown parser
 - [ ] HTML parser
+
 </details>
 
 <details>
@@ -58,7 +92,7 @@ There a few proposals/modules which would benefit Relax, I want to contribute/pr
 - [ ] JavaScript parser
 - [ ] Frontmatter specification
 - [ ] JSX/E4X/HTML-in-JS + template literals extension (template objects)
-- [ ] Deno+DOM, denoland/deno#3648, denoland/deno#3447, denoland/deno#7505, denoland/deno#6794, denoland/deno#7527 
+- [ ] Deno+DOM, denoland/deno#3648, denoland/deno#3447, denoland/deno#7505, denoland/deno#6794, denoland/deno#7527
 - [ ] Dynamic import ponyfill
   - [ ] denoland/deno#15482, denoland/deno#19322
   - [ ] [tc39/proposal-error-stacks](https://github.com/tc39/proposal-error-stacks)
