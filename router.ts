@@ -3,11 +3,11 @@ type Method = typeof METHODS[number];
 type Groups = URLPatternComponentResult['groups'];
 type MaybePromise<Type> = Type | Promise<Type>;
 
-type ResponseGenerator =
+type GeneratorResponse =
 	| Generator<void, Response | void, Response>
 	| AsyncGenerator<void, Response | void, Response>;
 
-type Handler<Type = MaybePromise<Response> | ResponseGenerator> = (
+type Handler<Type = MaybePromise<Response> | GeneratorResponse> = (
 	request: Request,
 	groups: Groups,
 ) => Type;
@@ -54,11 +54,11 @@ export class Router {
 
 	#add(
 		method: Method,
-		pathname: string,
+		pattern: string,
 		handler: Handler,
 	) {
 		const route = new Route(
-			new URLPattern({ pathname }),
+			new URLPattern({ pathname: pattern }),
 			handler,
 		);
 
@@ -67,81 +67,89 @@ export class Router {
 		return this;
 	}
 
-	any(pathname: string, handler: Handler<ResponseGenerator>): this;
-	any(pathname: string, handler: Handler<MaybePromise<Response>>): this;
-	any(pathname: string, handler: Handler) {
+	any(pattern: string, handler: Handler<GeneratorResponse>): this;
+	any(pattern: string, handler: Handler<MaybePromise<Response>>): this;
+	any(pattern: string, handler: Handler) {
+		const route = new Route(
+			new URLPattern({ pathname: pattern }),
+			handler,
+		);
+
 		for (const method of METHODS) {
-			this.#add(method, pathname, handler);
+			this.#routes[method].push(route);
 		}
 
 		return this;
 	}
 
-	get(pathname: string, handler: Handler<ResponseGenerator>): this;
-	get(pathname: string, handler: Handler<MaybePromise<Response>>): this;
-	get(pathname: string, handler: Handler) {
-		return this.#add('GET', pathname, handler);
+	get(pattern: string, handler: Handler<GeneratorResponse>): this;
+	get(pattern: string, handler: Handler<MaybePromise<Response>>): this;
+	get(pattern: string, handler: Handler) {
+		return this.#add('GET', pattern, handler);
 	}
 
-	head(pathname: string, handler: Handler<ResponseGenerator>): this;
-	head(pathname: string, handler: Handler<MaybePromise<Response>>): this;
-	head(pathname: string, handler: Handler) {
-		return this.#add('HEAD', pathname, handler);
+	head(pattern: string, handler: Handler<GeneratorResponse>): this;
+	head(pattern: string, handler: Handler<MaybePromise<Response>>): this;
+	head(pattern: string, handler: Handler) {
+		return this.#add('HEAD', pattern, handler);
 	}
 
-	post(pathname: string, handler: Handler<ResponseGenerator>): this;
-	post(pathname: string, handler: Handler<MaybePromise<Response>>): this;
-	post(pathname: string, handler: Handler) {
-		return this.#add('POST', pathname, handler);
+	post(pattern: string, handler: Handler<GeneratorResponse>): this;
+	post(pattern: string, handler: Handler<MaybePromise<Response>>): this;
+	post(pattern: string, handler: Handler) {
+		return this.#add('POST', pattern, handler);
 	}
 
-	put(pathname: string, handler: Handler<ResponseGenerator>): this;
-	put(pathname: string, handler: Handler<MaybePromise<Response>>): this;
-	put(pathname: string, handler: Handler) {
-		return this.#add('PUT', pathname, handler);
+	put(pattern: string, handler: Handler<GeneratorResponse>): this;
+	put(pattern: string, handler: Handler<MaybePromise<Response>>): this;
+	put(pattern: string, handler: Handler) {
+		return this.#add('PUT', pattern, handler);
 	}
 
-	delete(pathname: string, handler: Handler<ResponseGenerator>): this;
-	delete(pathname: string, handler: Handler<MaybePromise<Response>>): this;
-	delete(pathname: string, handler: Handler) {
-		return this.#add('DELETE', pathname, handler);
+	delete(pattern: string, handler: Handler<GeneratorResponse>): this;
+	delete(pattern: string, handler: Handler<MaybePromise<Response>>): this;
+	delete(pattern: string, handler: Handler) {
+		return this.#add('DELETE', pattern, handler);
 	}
 
-	connect(pathname: string, handler: Handler<ResponseGenerator>): this;
-	connect(pathname: string, handler: Handler<MaybePromise<Response>>): this;
-	connect(pathname: string, handler: Handler) {
-		return this.#add('CONNECT', pathname, handler);
+	connect(pattern: string, handler: Handler<GeneratorResponse>): this;
+	connect(pattern: string, handler: Handler<MaybePromise<Response>>): this;
+	connect(pattern: string, handler: Handler) {
+		return this.#add('CONNECT', pattern, handler);
 	}
 
-	options(pathname: string, handler: Handler<ResponseGenerator>): this;
-	options(pathname: string, handler: Handler<MaybePromise<Response>>): this;
-	options(pathname: string, handler: Handler) {
-		return this.#add('OPTIONS', pathname, handler);
+	options(pattern: string, handler: Handler<GeneratorResponse>): this;
+	options(pattern: string, handler: Handler<MaybePromise<Response>>): this;
+	options(pattern: string, handler: Handler) {
+		return this.#add('OPTIONS', pattern, handler);
 	}
 
-	trace(pathname: string, handler: Handler<ResponseGenerator>): this;
-	trace(pathname: string, handler: Handler<MaybePromise<Response>>): this;
-	trace(pathname: string, handler: Handler) {
-		return this.#add('TRACE', pathname, handler);
+	trace(pattern: string, handler: Handler<GeneratorResponse>): this;
+	trace(pattern: string, handler: Handler<MaybePromise<Response>>): this;
+	trace(pattern: string, handler: Handler) {
+		return this.#add('TRACE', pattern, handler);
 	}
 
-	patch(pathname: string, handler: Handler<ResponseGenerator>): this;
-	patch(pathname: string, handler: Handler<MaybePromise<Response>>): this;
-	patch(pathname: string, handler: Handler) {
-		return this.#add('PATCH', pathname, handler);
+	patch(pattern: string, handler: Handler<GeneratorResponse>): this;
+	patch(pattern: string, handler: Handler<MaybePromise<Response>>): this;
+	patch(pattern: string, handler: Handler) {
+		return this.#add('PATCH', pattern, handler);
 	}
 
 	async #handle(request: Request, index = 0): Promise<Response> {
 		const route = this.#routes[request.method as Method][index];
 
-		if (typeof route === 'undefined') {
-			throw TypeError(index > 0 ? 'No more handlers' : 'No handlers');
-		}
-
 		const { pathname } = new URL(request.url);
 		const { pattern, handler } = route;
 
 		if (!pattern.test({ pathname })) {
+			if (
+				typeof this.#routes[request.method as Method][index + 1] ===
+					'undefined'
+			) {
+				throw new TypeError('No matching handlers');
+			}
+
 			return this.#handle(request, ++index);
 		}
 
@@ -160,27 +168,37 @@ export class Router {
 		const generator = handler(
 			request,
 			groups,
-		) as ResponseGenerator;
+		) as GeneratorResponse;
 
 		let { value, done } = await generator.next();
 
 		if (!done) {
+			if (
+				typeof this.#routes[request.method as Method][index + 1] ===
+					'undefined'
+			) {
+				await generator.throw(new TypeError('No matching handlers'));
+			}
+
 			const response = await this.#handle(request, ++index);
 
-			({ value = response, done } = await generator.next(response!));
+			({ value = response, done } = await generator.next(
+				response!,
+			));
 		}
 
 		if (!done) {
-			throw TypeError('Yielded more than once');
+			await generator.throw(new TypeError('Yielded more than once'));
 		}
 
 		return value!;
 	}
 
 	handler = async (request: Request) => {
+		if (this.#routes[request.method as Method].length <= 0) {
+			throw new TypeError('No handlers');
+		}
+
 		return await this.#handle(request);
 	};
 }
-
-// TODO handle vs serve vs handler vs fetch vs route
-// TODO pathname vs path vs pattern
