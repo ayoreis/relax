@@ -1,8 +1,16 @@
 {
+	"compilerOptions": {
+		"noUncheckedIndexedAccess": true
+	},
+
 	"fmt": {
-		"indentWidth": 4,
-		"proseWrap": "never",
+		"proseWrap": "preserve",
 		"singleQuote": true,
 		"useTabs": true
+	},
+
+	"imports": {
+		"relax": "./mod.ts",
+		"relax/": "./"
 	}
 }
