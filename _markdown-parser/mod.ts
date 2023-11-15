@@ -1,16 +1,20 @@
 // https://spec.commonmark.org/0.30/
-import { LINE_ENDING } from './preliminaries.ts';
+import { LINE } from './preliminaries.ts';
+
+// TODO last empty line opening
 
 import {
+	ATXHeading,
 	BlockKind,
 	blocks,
 	ContainerBlock,
 	Document,
 	LeafBlock,
 	Paragraph,
+	SetextHeading,
 } from './blocks.ts';
 
-const DEBUG = false;
+const DEBUG = true;
 
 class LineParser {
 	#line;
@@ -28,18 +32,21 @@ class LineParser {
 
 	#parseLine() {
 		const unmatchedBlocks: BlockKind[] = [];
-		let deepestOpenBlock!: BlockKind;
+		let deepestOpenBlock: undefined | BlockKind = undefined;
 
 		DEBUG && console.debug([this.#line]);
 
 		do {
-			const shouldContinue = this.#currentOpenBlock.continue(
-				this.#line,
-			);
+			const shouldContinue = this.#currentOpenBlock.continue(this.#line);
 
 			// HACK because 0 is falsy
 			if (shouldContinue === null) {
 				unmatchedBlocks.push(this.#currentOpenBlock);
+
+				DEBUG && console.debug(
+					`-> ${this.#currentOpenBlock.constructor.name} closed`,
+				);
+
 				continue;
 			}
 
@@ -49,9 +56,7 @@ class LineParser {
 			this.#line = this.#line.slice(shouldContinue);
 
 			DEBUG && console.debug(
-				`-> ${this.#currentOpenBlock.constructor.name} ${
-					shouldContinue ? 'continued' : 'closed'
-				}`,
+				`-> ${this.#currentOpenBlock.constructor.name} continued`,
 			);
 		} while (
 			(() => {
@@ -67,7 +72,29 @@ class LineParser {
 			})()
 		);
 
-		this.#currentOpenBlock = deepestOpenBlock;
+		this.#currentOpenBlock = deepestOpenBlock ?? this.#tree;
+
+		// TODO
+		const setextHeadingMatch = SetextHeading.start(this.#line);
+
+		if (this.#currentOpenBlock instanceof Paragraph && setextHeadingMatch) {
+			const [block, index] = setextHeadingMatch;
+
+			block.linesOfText = this.#currentOpenBlock.rawContent;
+
+			this.#currentOpenBlock = block;
+
+			this.#lastMatchedContainerBlock.children.pop();
+			this.#lastMatchedContainerBlock.children.push(this.#currentOpenBlock);
+
+			this.#line = this.#line.slice(index);
+
+			for (const block of unmatchedBlocks) block.close();
+
+			DEBUG && console.debug(
+				`-> ${this.#currentOpenBlock.constructor.name} started`,
+			);
+		}
 
 		let firstRun = true;
 
@@ -79,19 +106,21 @@ class LineParser {
 			firstRun = false;
 
 			for (const Block of blocks) {
-				const shouldStart = Block.start(this.#line);
-
-				if (shouldStart === null) continue;
-
-				for (const block of unmatchedBlocks) block.close();
-
 				if (
 					this.#currentOpenBlock instanceof Paragraph &&
 					Block === Paragraph
 				) break;
 
+				const match = Block.start(this.#line);
+
+				if (!match) continue;
+
+				const [block, index] = match;
+
+				for (const block of unmatchedBlocks) block.close();
+
 				// TODO parameters
-				this.#currentOpenBlock = new Block();
+				this.#currentOpenBlock = block;
 				this.#lastMatchedContainerBlock.children.push(
 					this.#currentOpenBlock,
 				);
@@ -100,7 +129,7 @@ class LineParser {
 					this.#lastMatchedContainerBlock = this.#currentOpenBlock;
 				}
 
-				this.#line = this.#line.slice(shouldStart);
+				this.#line = this.#line.slice(index);
 
 				DEBUG && console.debug(
 					`-> ${this.#currentOpenBlock.constructor.name} started`,
@@ -111,7 +140,9 @@ class LineParser {
 		}
 
 		if (this.#line !== '') {
-			if (this.#currentOpenBlock instanceof Paragraph) {
+			if (this.#currentOpenBlock instanceof ATXHeading) {
+				this.#currentOpenBlock.rawContents += this.#line;
+			} else if (this.#currentOpenBlock instanceof Paragraph) {
 				this.#currentOpenBlock.rawContent += this.#line;
 			} else {
 				DEBUG && console.debug('Line not empty');
@@ -150,7 +181,7 @@ export class Parser {
 
 	/** https://spec.commonmark.org/0.30/#overview */
 	static parse(source: string) {
-		const parser = new this(source.match(LINE_ENDING)!);
+		const parser = new this(source.match(LINE)!);
 
 		parser.#parseBlockStructure();
 		parser.#parseInlineStructure();

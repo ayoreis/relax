@@ -1,15 +1,18 @@
-import { BLANK_LINE } from './preliminaries.ts';
+import { BLANK_LINE, LINE_ENDING } from './preliminaries.ts';
 
 export type ContainerBlockKind = Document;
 export type LeafBlockKind = ThematicBreak | Paragraph | BlankLine;
 export type BlockKind = ContainerBlockKind | LeafBlockKind;
+
+type ATXHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
+type SetextHeadingLevel = 1 | 2;
 
 /** 3. https://spec.commonmark.org/0.30/#blocks */
 export abstract class Block {
 	open = true;
 
 	// @ts-expect-error https://github.com/microsoft/TypeScript/issues/34516
-	static start(_line: string): null | number {}
+	static start(_line: string): null | readonly [Block, number] {}
 	abstract continue(_line: string): null | number;
 	abstract close(): void;
 }
@@ -24,7 +27,70 @@ export class ThematicBreak extends LeafBlock {
 		/^ {0,3}(?<type>[-_*])(?:[ \t]*\k<type>){2,}[ \t]*\r?\n?$/;
 
 	static start(line: string) {
-		return this.#THEMATIC_BREAK.test(line) ? line.length : null;
+		return this.#THEMATIC_BREAK.test(line)
+			? [new this(), line.length] as const
+			: null;
+	}
+
+	continue() {
+		return null;
+	}
+
+	close() {
+		this.open = false;
+	}
+}
+
+/** 4.2 https://spec.commonmark.org/0.30/#atx-headings */
+export class ATXHeading extends LeafBlock {
+	static #ATX_HEADING = /^ {0,3}(?<level>#{1,6})(?:[ \t]+|$)/d;
+	// TODO
+	rawContents = '';
+
+	private constructor(readonly level: ATXHeadingLevel) {
+		super();
+	}
+
+	static start(line: string) {
+		const match = line.match(this.#ATX_HEADING);
+
+		if (!match) return null;
+
+		return [
+			new this(match.groups!.level!.length as ATXHeadingLevel),
+			match.indices![0]![1],
+		] as const;
+	}
+
+	continue() {
+		return null;
+	}
+
+	close() {
+		this.open = false;
+	}
+}
+
+/** 4.3. https://spec.commonmark.org/0.30/#setext-headings */
+export class SetextHeading extends LeafBlock {
+	/** https://spec.commonmark.org/0.30/#setext-heading-underline */
+	static #SETEXT_HEADING_UNDERLINE = /^ {0,3}(?<type>[-=]){1,}[ \t]*\n?\r?$/;
+
+	linesOfText = '';
+
+	private constructor(readonly level: SetextHeadingLevel) {
+		super();
+	}
+
+	static start(line: string) {
+		const match = line.match(this.#SETEXT_HEADING_UNDERLINE);
+
+		return match
+			? [
+				new SetextHeading(match.groups!.type! === '=' ? 1 : 2),
+				line.length,
+			] as const
+			: null;
 	}
 
 	continue() {
@@ -36,12 +102,13 @@ export class ThematicBreak extends LeafBlock {
 	}
 }
 
-/** 4.2. https://spec.commonmark.org/0.30/#paragraphs */
+/** 4.8. https://spec.commonmark.org/0.30/#paragraphs */
 export class Paragraph extends LeafBlock {
+	// TODO
 	rawContent = '';
 
 	static start(line: string) {
-		return BLANK_LINE.test(line) ? null : 0;
+		return BLANK_LINE.test(line) ? null : [new Paragraph(), 0] as const;
 	}
 
 	continue(line: string) {
@@ -53,10 +120,12 @@ export class Paragraph extends LeafBlock {
 	}
 }
 
-/** 4.3. https://spec.commonmark.org/0.30/#blank-lines */
+/** 4.9. https://spec.commonmark.org/0.30/#blank-lines */
 export class BlankLine extends LeafBlock {
 	static start(line: string) {
-		return BLANK_LINE.test(line) ? line.length : null;
+		return BLANK_LINE.test(line)
+			? [new BlankLine(), line.length] as const
+			: null;
 	}
 
 	continue() {
@@ -78,8 +147,8 @@ export class Document extends ContainerBlock {
 		return null;
 	}
 
-	continue() {
-		return 0;
+	continue(line: string) {
+		return LINE_ENDING.test(line) ? 0 : null;
 	}
 
 	close(): void {
@@ -87,4 +156,10 @@ export class Document extends ContainerBlock {
 	}
 }
 
-export const blocks = [Document, ThematicBreak, Paragraph, BlankLine];
+export const blocks = [
+	Document,
+	ThematicBreak,
+	ATXHeading,
+	Paragraph,
+	BlankLine,
+];
